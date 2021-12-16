@@ -1,0 +1,16 @@
+name: showerpipe
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - pip
+  - python>=3.7
+  - pyyaml
+  - lxml
+  - numpy
+  - pandas
+  - pythia8
+  - pip:
+    - git+https://github.com/jacanchaplais/showerpipe.git#egg=showerpipe

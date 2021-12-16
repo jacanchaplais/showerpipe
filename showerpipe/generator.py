@@ -21,7 +21,7 @@ import os
 from functools import cached_property
 
 import numpy as np
-from heparchy import TYPE, REAL_TYPE
+from typicle import Types
 
 from showerpipe._interface import GeneratorAdapter
 from showerpipe import _dataframe
@@ -40,6 +40,8 @@ class PythiaGenerator(GeneratorAdapter):
         Path to matrix element data file, ie. LHE file
     rng_seed : int
         Seed passed to the random number generator used by Pythia.
+    types : typicle.Types
+        Data container defining the types of the output physics data.
 
     Returns
     -------
@@ -67,7 +69,8 @@ class PythiaGenerator(GeneratorAdapter):
     import pandas as __pd
 
 
-    def __init__(self, config_file: str, me_file: str=None, rng_seed: int=1):
+    def __init__(self, config_file: str, me_file: str=None, rng_seed: int=1,
+                 types: Types=Types()):
         self.xml_dir = os.environ['PYTHIA8DATA']
         pythia = self.__pythia_lib.Pythia(
                 xmlDir=self.xml_dir, printBanner=False)
@@ -79,6 +82,21 @@ class PythiaGenerator(GeneratorAdapter):
             pythia.readString(f"Beams:LHEF = {me_file}")
         pythia.readString("Print:quiet = on")
         pythia.init()
+        pmu_type = types.pmu[0][1]
+        color_type = types.color[0][1]
+        edge_type = types.edge[0][1]
+        self.__types = {
+                'pdg': types.pdg,
+                'final': types.final,
+                'x': pmu_type,
+                'y': pmu_type,
+                'z': pmu_type,
+                'e': pmu_type,
+                'color': color_type,
+                'anticolor': color_type,
+                'in': edge_type,
+                'out': edge_type,
+                }
         self.__pythia = pythia
     
     def __iter__(self):
@@ -119,20 +137,7 @@ class PythiaGenerator(GeneratorAdapter):
         vertex_df = _dataframe.vertex_df(event_df)
         event_df = _dataframe.add_edge_cols(event_df, vertex_df)
         event_df = event_df.drop(columns=['parents'])
-        event_df = event_df.astype({
-                'pdg': TYPE['int'],
-                'final': TYPE['bool'],
-                'x': REAL_TYPE,
-                'y': REAL_TYPE,
-                'z': REAL_TYPE,
-                'e': REAL_TYPE,
-                'color': TYPE['int'],
-                'anticolor': TYPE['int'],
-                'in': TYPE['int'],
-                'out': TYPE['int'],
-                },
-            copy=False,
-            )
+        event_df = event_df.astype(self.__types, copy=False)
         event_df['out'] *= -1
         event_df['in'] *= -1
         return event_df
