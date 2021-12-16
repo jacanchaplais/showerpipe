@@ -1,3 +1,22 @@
+"""
+``showerpipe.generator``
+=====================
+
+The ShowerPipe Generator module provides a standardised Pythonic
+interface to showering and hadronisation programs.
+
+Data is generated using Python iterator objects, and provided in
+NumPy arrays.
+
+Notes
+-----
+The classes provided here are concrete implementations of the abstract
+GeneratorAdapter class. Currently only PythiaGenerator has been
+implemented, however this module may be extended with additional
+concrete implementations of GeneratorAdapter. Future versions are
+planned to include HerwigGenerator and AriadneGenerator interfaces.
+"""
+
 import os
 from functools import cached_property
 
@@ -5,10 +24,45 @@ import numpy as np
 from heparchy import TYPE, REAL_TYPE
 
 from showerpipe._interface import GeneratorAdapter
-import showerpipe._dataframe as dataframe
+from showerpipe import _dataframe
 
 
 class PythiaGenerator(GeneratorAdapter):
+    """Wrapper of Pythia8 generator. Provides an iterator over
+    successive showered events, whose properties expose the data
+    generated via NumPy arrays.
+
+    Parameters
+    ----------
+    config_file : str
+        Path to Pythia .cmnd configuration file.
+    me_file : str, optional
+        Path to matrix element data file, ie. LHE file
+    rng_seed : int
+        Seed passed to the random number generator used by Pythia.
+
+    Returns
+    -------
+    out : iterator
+        Upon iteration a new particle shower is triggered, whose data
+        is accessible via the following properties:
+            edges : ndarray
+                Edge list representing generation ancestry of the event
+                as a directed acyclic graph.
+                Provided in a structured array, with fields 'in', 'out'.
+            pmu : ndarray
+                Four momentum provided in a structured array, with
+                fields 'x', 'y', 'z', 'e'.
+            pdg : ndarray
+                Particle Data Group identity codes for each particle.
+            color : ndarray
+                Color / anticolor pairs for each particle, provided
+                in a structured array with fields 'color', 'anticolor'.
+            final : ndarray
+                Mask over the particle list, to extract only those in
+                their final state.
+    """
+
     import pythia8 as __pythia_lib
     import pandas as __pd
 
@@ -62,8 +116,8 @@ class PythiaGenerator(GeneratorAdapter):
             )
         event_df = event_df.set_index('index')
         event_df = event_df[event_df['pdg'] != 90]
-        vertex_df = dataframe.vertex_df(event_df)
-        event_df = dataframe.add_edge_cols(event_df, vertex_df)
+        vertex_df = _dataframe.vertex_df(event_df)
+        event_df = _dataframe.add_edge_cols(event_df, vertex_df)
         event_df = event_df.drop(columns=['parents'])
         event_df = event_df.astype({
                 'pdg': TYPE['int'],
@@ -85,15 +139,15 @@ class PythiaGenerator(GeneratorAdapter):
 
     @property
     def edges(self) -> np.ndarray:
-        return dataframe.df_to_struc(self.__event_df[['in', 'out']])
+        return _dataframe.df_to_struc(self.__event_df[['in', 'out']])
 
     @property
     def pmu(self) -> np.ndarray:
-        return dataframe.df_to_struc(self.__event_df[['x', 'y', 'z', 'e']])
+        return _dataframe.df_to_struc(self.__event_df[['x', 'y', 'z', 'e']])
 
     @property
     def color(self) -> np.ndarray:
-        return dataframe.df_to_struc(self.__event_df[['color', 'anticolor']])
+        return _dataframe.df_to_struc(self.__event_df[['color', 'anticolor']])
 
     @property
     def pdg(self) -> np.ndarray:
