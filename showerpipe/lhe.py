@@ -110,7 +110,8 @@ class LheData:
         root = self.__build_root(dup_event_copies)
         if inplace == True:
             self.__root = root
-            del self.num_events
+            if self.num_events is not None:
+                del self.num_events
             return None
         else:
             return _root_to_bytes(root)
