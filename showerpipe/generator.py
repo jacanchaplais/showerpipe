@@ -110,6 +110,8 @@ class PythiaGenerator(GeneratorAdapter):
             raise StopIteration("No more events left to be showered.")
         if self.__event_df is not None:
             del self.__event_df
+        if self.count is not None:
+            del self.count
         return self
 
     @cached_property
@@ -141,6 +143,11 @@ class PythiaGenerator(GeneratorAdapter):
         event_df['out'] *= -1
         event_df['in'] *= -1
         return event_df
+
+    @cached_property
+    def count(self) -> int:
+        """The number of particles in the event."""
+        return len(self.__event_df)
 
     @property
     def edges(self) -> np.ndarray:
