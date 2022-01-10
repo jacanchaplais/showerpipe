@@ -2,13 +2,15 @@ from abc import ABC, abstractmethod
 
 
 class GeneratorAdapter(ABC):
+    """Adapter pattern interface for data generators."""
+
     @abstractmethod
     def __iter__(self):
-        pass
+        """Enforce the objects as iterables."""
 
     @abstractmethod
     def __next__(self):
-        pass
+        """Update underlying data to next iteration and return self."""
 
     @property
     @abstractmethod

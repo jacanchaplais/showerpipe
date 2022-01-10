@@ -23,8 +23,9 @@ from functools import cached_property
 import numpy as np
 from typicle import Types
 
-from showerpipe._interface import GeneratorAdapter
+from showerpipe._base import GeneratorAdapter
 from showerpipe import _dataframe
+from showerpipe.lhe import load_lhe
 
 
 class PythiaGenerator(GeneratorAdapter):
@@ -80,6 +81,8 @@ class PythiaGenerator(GeneratorAdapter):
         if me_file is not None:
             pythia.readString("Beams:frameType = 4")
             pythia.readString(f"Beams:LHEF = {me_file}")
+            lhe_data = load_lhe(me_file)
+            self.__num_events = lhe_data.num_events
         pythia.readString("Print:quiet = on")
         pythia.init()
         pmu_type = types.pmu[0][1]
@@ -101,6 +104,13 @@ class PythiaGenerator(GeneratorAdapter):
     
     def __iter__(self):
         return self
+
+    def __len__(self):
+        try:
+            return self.__num_events
+        except AttributeError:
+            raise NotImplementedError(
+                    'Length only defined when initialised with LHE file.')
 
     def __next__(self):
         if self.__pythia == None:
