@@ -9,6 +9,7 @@ from copy import deepcopy
 import numpy as np
 from mpi4py import MPI
 import h5py
+import click
 
 from showerpipe import lhe
 from showerpipe.generator import PythiaGenerator
@@ -18,14 +19,18 @@ from typicle import Types
 def create_dset(buffer, name, shape, dtype):
     return buffer.create_dataset(name, shape, dtype=dtype)
 
-def main(lhe_path, comm, root=0, record_length=1000):
+@click.command()
+@click.option('--cache-length', default=1000)
+@click.argument('lhe-path')
+@click.argument('output')
+def generate(cache_length, lhe_path, output):
     # setup comm info:
-    type_ = Types()
-    proc_name = MPI.Get_processor_name()
+    comm = MPI.COMM_WORLD
     rank = int(comm.Get_rank())
     num_procs = comm.Get_size()
+    type_ = Types()
     # open the file (examples don't use with - why not?)
-    f = h5py.File('test/big_test.hdf5', 'w', driver='mpio', comm=comm)
+    f = h5py.File(output, 'w', driver='mpio', comm=comm)
     process = f.create_group('process')
     # prepare data
     hard_events = lhe.load_lhe(lhe_path)
@@ -51,14 +56,14 @@ def main(lhe_path, comm, root=0, record_length=1000):
             records['pdg'].append(event.pdg)
             records['color'].append(event.color)
             records['final'].append(event.final)
-            if ( (event_num + 1) % record_length == 0
+            if ( (event_num + 1) % cache_length == 0
                  or (event_num + 1) == num_events):
                 records['count'].reverse() # popping order from the stack
                 send_counts = np.array(records['count'], dtype='<i4')
-                recv_counts = np.zeros(record_length * num_procs, dtype='<i4')
+                recv_counts = np.zeros(cache_length * num_procs, dtype='<i4')
                 comm.Allgather(sendbuf=send_counts, recvbuf=recv_counts)
                 for count_idx, num_pcls in enumerate(recv_counts):
-                    idx = num_procs * record_length * flush_num + count_idx
+                    idx = num_procs * cache_length * flush_num + count_idx
                     grp = process.create_group(f'event_{idx:09}')
                     grp.attrs['num_pcls'] = num_pcls
                     pmu = create_dset(grp, 'pmu', (num_pcls,), type_.pmu)
@@ -68,8 +73,8 @@ def main(lhe_path, comm, root=0, record_length=1000):
                     edges = create_dset(grp, 'edges', (num_pcls,), type_.edge)
                 for count_idx, count in enumerate(records['count']):
                     idx = int(count_idx
-                              + rank * record_length
-                              + num_procs * record_length * flush_num
+                              + rank * cache_length
+                              + num_procs * cache_length * flush_num
                               )
                     curr_grp = process[f'event_{idx:09}']
                     curr_grp['pmu'][...] = records['pmu'].pop()
@@ -80,9 +85,3 @@ def main(lhe_path, comm, root=0, record_length=1000):
                 flush_num += 1
                 records['count'] = []
     f.close()
-
-# if __name__ == '__main__':
-#     lhe_path = str('/scratch/jlc1n20/data/g_to_bb/Events/run_01/'
-#                    + 'unweighted_events.lhe.gz')
-#     comm = MPI.COMM_WORLD
-#     main(lhe_path=lhe_path, comm=comm)
