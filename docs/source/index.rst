@@ -6,6 +6,9 @@
 Welcome to showerpipe's documentation!
 ======================================
 
+This documentation is under construction, and will have full coverage of
+showerpipe's features with the release of version 0.1.0.
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
