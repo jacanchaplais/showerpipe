@@ -24,6 +24,14 @@ class DataSubject(ABC):
 
 class DataObserver(ABC):
     @abstractmethod
+    def add_filter(self, filt: DataFilter):
+        pass
+
+    @abstractmethod
+    def add_sink(self, sink: DataSink):
+        pass
+
+    @abstractmethod
     def update(self, subject_data):
         """Performs some operation on the data contained within the
         subject instance.
@@ -32,3 +40,17 @@ class DataObserver(ABC):
     @abstractmethod
     def close(self):
         """Cleanup behaviour once the data generation is over."""
+
+class DataFilter(ABC):
+    @abstractmethod
+    def apply(self, data):
+        pass
+
+class DataSink(ABC):
+    @abstractmethod
+    def flush(self, data):
+        pass
+
+    @abstractmethod
+    def close(self):
+        pass
