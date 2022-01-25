@@ -22,6 +22,23 @@ class DataSubject(ABC):
         is over.
         """
 
+
+class DataFilter(ABC):
+    @abstractmethod
+    def apply(self, data):
+        pass
+
+
+class DataSink(ABC):
+    @abstractmethod
+    def flush(self, data):
+        pass
+
+    @abstractmethod
+    def close(self):
+        pass
+
+
 class DataObserver(ABC):
     @abstractmethod
     def add_filter(self, filt: DataFilter):
@@ -40,17 +57,3 @@ class DataObserver(ABC):
     @abstractmethod
     def close(self):
         """Cleanup behaviour once the data generation is over."""
-
-class DataFilter(ABC):
-    @abstractmethod
-    def apply(self, data):
-        pass
-
-class DataSink(ABC):
-    @abstractmethod
-    def flush(self, data):
-        pass
-
-    @abstractmethod
-    def close(self):
-        pass

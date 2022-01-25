@@ -19,4 +19,3 @@ def load_plugins(plugins: List[str]) -> None:
     for plugin_name in plugins:
         plugin = import_module(plugin_name)
         plugin.initialise()
-

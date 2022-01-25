@@ -1,6 +1,6 @@
 from contextlib import ExitStack
 
-from showerpipe.interfaces._base import DataObserver
+from showerpipe.pipeline._base import DataObserver
 
 
 class HdfStorage(DataObserver):

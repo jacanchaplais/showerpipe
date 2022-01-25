@@ -1,14 +1,17 @@
+from typing import List
+
+from showerpipe._base import GeneratorAdapter
 from showerpipe.generator import PythiaGenerator
-from showerpipe.interfaces._base import DataSubject
+from showerpipe.pipeline._base import DataSubject, DataSink
 
 
-class ShowerPipeline(DataSubject):
+class ShowerSource(DataSubject):
     """Provides an extensible interface to automated data generation and
     post-processing.
     """
-    def __init__(self, data_generator: PythiaGenerator):
+    def __init__(self, data_generator: GeneratorAdapter):
         self.__generator = data_generator
-        self.__observers = []
+        self.__observers: List[DataSink] = []
         self.data = None
 
     def attach(self, observer):
@@ -26,7 +29,7 @@ class ShowerPipeline(DataSubject):
     def notify(self):
         """Notifies all observers that new data is available."""
         for observer in self.__observers:
-            observer.update(self.data)
+            observer.flush(self.data)
 
     def terminate(self):
         for observer in self.__observers:
