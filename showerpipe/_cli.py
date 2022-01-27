@@ -2,7 +2,7 @@ import click
 from omegaconf import OmegaConf
 
 from showerpipe.generator import PythiaGenerator
-from showerpipe.pipeline.sources import ShowerSource
+from showerpipe.pipeline import sources, sinks, filters
 from showerpipe.pipeline import factory, load
 
 
@@ -21,7 +21,12 @@ def run(pipeline, listeners):
 def showergen(ctx, config_path):
     ctx.obj = {}
     conf = OmegaConf.load(config_path)
-    load.load_plugins(conf['plugins'])
+    plugin_list = conf['plugins']
+    plugin_list = [] if plugin_list == [None] else plugin_list
+    if plugin_list and plugin_list != [None]:
+        load.load_plugins(plugin_list)
+    factory.register('hdf_sink', sinks.HdfSink)
+    factory.register('knn_filter', filters.KnnTransform)
     ctx.obj['listeners'] = [factory.create(item) for item in conf['pipeline']]
 
 
@@ -38,5 +43,5 @@ def pythia(ctx, settings_file, me_file):
             config_file=settings_file,
             me_file=me_file,
             )
-    pipeline = ShowerSource(data_generator)
+    pipeline = sources.ShowerSource(data_generator)
     run(pipeline, ctx.obj['listeners'])

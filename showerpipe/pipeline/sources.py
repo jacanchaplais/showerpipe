@@ -1,8 +1,17 @@
+from functools import reduce
 from typing import List
+
+import graphicle as gcl
 
 from showerpipe._base import GeneratorAdapter
 from showerpipe.generator import PythiaGenerator
 from showerpipe.pipeline._base import DataSubject, DataSink
+
+
+def composite_fn(*func):
+    def compose(f, g):
+        return lambda x: f(g(x))
+    return reduce(compose, func, lambda x: x)
 
 
 class ShowerSource(DataSubject):
@@ -17,7 +26,7 @@ class ShowerSource(DataSubject):
     def attach(self, observer):
         """Attaches an observer to handle the data once generated."""
         if observer not in self.__observers:
-            self.__observers.append(observer)
+            self.__observers.insert(0, observer)
 
     def detach(self, observer):
         """Removes an observer from the pipeline."""
@@ -28,12 +37,26 @@ class ShowerSource(DataSubject):
 
     def notify(self):
         """Notifies all observers that new data is available."""
-        for observer in self.__observers:
-            observer.flush(self.data)
-
+        observers = self.__observers.copy()
+        if not isinstance(self.__observers[0], DataSink):
+            raise ValueError(
+                "The last element in the pipeline must be a sink."
+            )
+        else:
+            sink = observers.pop(0)
+        filters = [observer.apply for observer in observers]
+        pipe = composite_fn(*filters)
+        return sink.flush(pipe(self.data))
+            
     def terminate(self):
-        for observer in self.__observers:
-            observer.close()
+        observers = self.__observers.copy()
+        if not isinstance(self.__observers[0], DataSink):
+            raise ValueError(
+                "The last element in the pipeline must be a sink."
+            )
+        else:
+            sink = observers.pop(0)
+        sink.close()
 
     def __iter__(self):
         return self
@@ -43,7 +66,14 @@ class ShowerSource(DataSubject):
 
     def __next__(self):
         try:
-            self.data = next(self.__generator)
+            data = next(self.__generator)
+            self.data = gcl.Graphicle.from_numpy(
+                edges=data.edges,
+                pmu=data.pmu,
+                pdg=data.pdg,
+                color=data.color,
+                final=data.final,
+            )
             return self
         except StopIteration as e:
             self.terminate()
