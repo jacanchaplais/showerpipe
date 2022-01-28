@@ -1,8 +1,6 @@
-from contextlib import ExitStack
+import graphicle as gcl
 
 from showerpipe.pipeline._base import DataFilter
-
-import graphicle as gcl
 
 
 class KnnTransform(DataFilter):
@@ -17,5 +15,3 @@ class KnnTransform(DataFilter):
         final_data.adj = gcl.AdjacencyList.from_matrix(
                 dR_adj, weighted=self.weighted)
         return final_data
-
-

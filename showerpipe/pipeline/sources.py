@@ -47,7 +47,7 @@ class ShowerSource(DataSubject):
         filters = [observer.apply for observer in observers]
         pipe = composite_fn(*filters)
         return sink.flush(pipe(self.data))
-            
+
     def terminate(self):
         observers = self.__observers.copy()
         if not isinstance(self.__observers[0], DataSink):
