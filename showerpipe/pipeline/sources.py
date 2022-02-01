@@ -1,11 +1,10 @@
 from functools import reduce
-from typing import List, Any, Optional, Union
+from typing import List, Any, Union
 
 import graphicle as gcl
 
 from showerpipe._base import GeneratorAdapter
 from ._base import DataSubject, DataSink, DataFilter, PipeBase
-from showerpipe.generator import PythiaGenerator
 
 
 def _composite_fn(*func):
