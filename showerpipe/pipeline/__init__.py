@@ -5,7 +5,7 @@ from ._base import DataSink, DataFilter
 
 def construct_pipeline(tree_dict: dict) -> PipeJunction:
     tree = PipeJunction()
-    for i, branch_dict in enumerate(tree_dict):
+    for branch_dict in tree_dict:
         sequence = PipeSequence()
         for item in branch_dict['branch']:
             if 'branch' in item:
