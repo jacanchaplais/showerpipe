@@ -1,35 +1,31 @@
 from enum import Enum
-from typing import Dict, Callable, Any
+from typing import Dict, Callable, Any, Union
 
-from showerpipe.pipeline._base import DataSink
-
-
-class PipeType(Enum):
-    FILTER: str = 'filter'
-    SINK: str = 'sink'
+from showerpipe.pipeline._base import DataSink, DataFilter
 
 
-create_funcs: Dict[str, Callable[..., DataSink]] = {}
+PipePiece = Union[DataFilter, DataSink]
+create_funcs: Dict[str, Callable[..., PipePiece]] = {}
 
 
-def register(sink_name: str, creation_func: Callable[..., DataSink]):
-    """Register a new data sink."""
-    create_funcs[sink_name] = creation_func
+def register(name: str, creation_func: Callable[..., PipePiece]):
+    """Register a new data filter or sink."""
+    create_funcs[name] = creation_func
 
 
-def unregister(sink_name: str):
-    """Unregister a data sink."""
-    create_funcs.pop(sink_name, None)
+def unregister(name: str):
+    """Unregister a data filter or sink."""
+    create_funcs.pop(name, None)
 
 
-def create(arguments: Dict[str, Any]) -> DataSink:
-    """Create a data sink of a specific type, given a dictionary of
-    arguments.
+def create(arguments: Dict[str, Any]) -> PipePiece:
+    """Create a data filter orsink of a specific type, given a
+    dictionary of arguments.
     """
     args_copy = arguments.copy()
-    sink_name = args_copy.pop('type')
+    name = args_copy.pop('type')
     try:
-        creation_func = create_funcs[sink_name]
+        creation_func = create_funcs[name]
         return creation_func(**args_copy)
     except KeyError:
-        raise ValueError(f'Unknown sink of name {sink_name}.') from None
+        raise ValueError(f'Unknown filter or sink of name {name}.') from None

@@ -8,6 +8,8 @@ class HdfSink(DataSink):
     def __init__(
             self, path: str, process_name: str, strict_edges: bool = True):
         from heparchy.write.hdf import HdfWriter  # type: ignore
+        # TODO: remove line below
+        self.process_name = process_name
         self.__stack = ExitStack()
         self.__file_obj = self.__stack.enter_context(
                 HdfWriter(path=path))

@@ -4,13 +4,13 @@ from omegaconf import OmegaConf
 from showerpipe.generator import PythiaGenerator
 from showerpipe.pipeline import sources, sinks, filters
 from showerpipe.pipeline import factory, load
+from showerpipe.pipeline import construct_pipeline
 
 
-def run(pipeline, listeners):
-    """Attaches the observers to the event generator, and then runs it."""
-    for listen in listeners:
-        pipeline.attach(listen)
-    with click.progressbar(pipeline) as events:
+def run(shower_source, pipeline):
+    """Attaches the pipeline to the event generator, and then runs it."""
+    shower_source.attach(pipeline)
+    with click.progressbar(shower_source) as events:
         for event in events:
             event.notify()
 
@@ -21,13 +21,15 @@ def run(pipeline, listeners):
 def showergen(ctx, config_path):
     ctx.obj = {}
     conf = OmegaConf.load(config_path)
-    plugin_list = conf['plugins']
-    plugin_list = [] if plugin_list == [None] else plugin_list
+    plugin_list = [] if conf.plugins == [None] else conf.plugins
     if plugin_list and plugin_list != [None]:
         load.load_plugins(plugin_list)
     factory.register('hdf_sink', sinks.HdfSink)
     factory.register('knn_filter', filters.KnnTransform)
-    ctx.obj['listeners'] = [factory.create(item) for item in conf['pipeline']]
+    pipeline_tree = OmegaConf.to_object(conf.pipeline)
+    if 'branch' not in pipeline_tree[0]:
+        pipeline_tree = [{'branch': pipeline_tree}]
+    ctx.obj['pipeline'] = construct_pipeline(pipeline_tree)
 
 
 @showergen.command()
@@ -43,5 +45,5 @@ def pythia(ctx, settings_file, me_file):
             config_file=settings_file,
             me_file=me_file,
             )
-    pipeline = sources.ShowerSource(data_generator)
-    run(pipeline, ctx.obj['listeners'])
+    shower_source = sources.ShowerSource(data_generator)
+    run(shower_source, ctx.obj['pipeline'])

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Union, Any
 
 
 # observer pattern interface for UIs to data generation and post-processing
@@ -57,3 +58,17 @@ class DataObserver(ABC):
     @abstractmethod
     def close(self):
         """Cleanup behaviour once the data generation is over."""
+
+
+class PipeBase(ABC):  # composite pattern interface
+    @abstractmethod
+    def add(self, component) -> None:
+        pass
+
+    @abstractmethod
+    def remove(self, component) -> None:
+        pass
+
+    @abstractmethod
+    def execute(self, data) -> Any:
+        pass
