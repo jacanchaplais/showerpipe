@@ -19,6 +19,7 @@ planned to include HerwigGenerator and AriadneGenerator interfaces.
 
 import os
 from functools import cached_property
+from typing import Dict
 
 import numpy as np
 from typicle import Types
@@ -99,6 +100,8 @@ class PythiaGenerator(GeneratorAdapter):
                 'anticolor': color_type,
                 'in': edge_type,
                 'out': edge_type,
+                'status': types.h_int,
+                'helicity': types.h_int,
                 }
         self.__pythia = pythia
     
@@ -140,8 +143,10 @@ class PythiaGenerator(GeneratorAdapter):
                     'z': pcl.pz(),
                     'e': pcl.e(),
                     'color': pcl.col(),
+                    'status': pcl.status(),
+                    'helicity': pcl.pol(),
                     'anticolor': pcl.acol(),
-                    'parents': sorted_tuple(pcl.motherList())
+                    'parents': sorted_tuple(pcl.motherList()),
                 }, self.__pythia.event),
             )
         event_df = event_df.set_index('index')
@@ -178,3 +183,17 @@ class PythiaGenerator(GeneratorAdapter):
     @property
     def final(self) -> np.ndarray:
         return self.__event_df['final'].values
+
+    @property
+    def helicity(self) -> np.ndarray:
+        """The polarisation of the particles. Particles without a
+        polarisation (or where it is unknown) have a value of 9.
+        """
+        return self.__event_df['helicity'].values
+
+    @property
+    def status(self) -> np.ndarray:
+        """Pythia-specific status codes. See link for details.
+        https://pythia.org/latest-manual/ParticleProperties.html
+        """
+        return self.__event_df['status'].values

@@ -116,6 +116,8 @@ class ShowerSource(DataSubject):
                 pmu=data.pmu,
                 pdg=data.pdg,
                 color=data.color,
+                helicity=data.helicity,
+                status=data.status,
                 final=data.final,
             )
             return self
