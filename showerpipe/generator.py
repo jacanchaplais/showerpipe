@@ -18,8 +18,10 @@ planned to include HerwigGenerator and AriadneGenerator interfaces.
 """
 
 import os
+import tempfile
+import gzip
+import shutil
 from functools import cached_property
-from typing import Dict
 
 import numpy as np
 from typicle import Types
@@ -80,9 +82,17 @@ class PythiaGenerator(GeneratorAdapter):
         pythia.readString("Random:setSeed = on")
         pythia.readString(f"Random:seed = {rng_seed}")
         if me_file is not None:
+            try:
+                self.temp_me_file = tempfile.NamedTemporaryFile()
+                with gzip.open(me_file) as lhe_file:
+                    shutil.copyfileobj(lhe_file, self.temp_me_file)
+                self.temp_me_file.seek(0)
+                me_path = self.temp_me_file.name
+            except gzip.BadGzipFile:
+                me_path = me_file
             pythia.readString("Beams:frameType = 4")
-            pythia.readString(f"Beams:LHEF = {me_file}")
-            lhe_data = load_lhe(me_file)
+            pythia.readString(f"Beams:LHEF = {me_path}")
+            lhe_data = load_lhe(me_path)
             self.__num_events = lhe_data.num_events
         pythia.readString("Print:quiet = on")
         pythia.init()
@@ -120,6 +130,8 @@ class PythiaGenerator(GeneratorAdapter):
             raise RuntimeError("Pythia generator not initialised.")
         is_next = self.__pythia.next()
         if not is_next:
+            if hasattr(self, 'temp_me_file'):
+                self.temp_me_file.close()
             raise StopIteration("No more events left to be showered.")
         if self.__event_df is not None:
             del self.__event_df
