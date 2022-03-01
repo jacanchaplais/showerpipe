@@ -39,10 +39,5 @@ conda env update -f environment.yml --prune
 
 Simply:
 ```bash
-pip install git+https://github.com/jacanchaplais/showerpipe.git#egg=showerpipe
+pip install showerpipe
 ```
-
-# Coming soon
-
-- [ ] Examples
-- [ ] Formal documentation (beyond the existing docstrings)
