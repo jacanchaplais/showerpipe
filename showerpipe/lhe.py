@@ -40,7 +40,7 @@ def source_adapter(source: _LHE_STORAGE) -> Iterator[BinaryIO]:
     ----------
     source : Pathlike, string, or bytes
         The variable or filepath containing the LHE data. May be a path,
-        string, or bytes object. The path may be compressed with gzip.
+        string, or bytes object. If file, may be compressed with gzip.
 
     Returns
     -------
@@ -69,9 +69,7 @@ def source_adapter(source: _LHE_STORAGE) -> Iterator[BinaryIO]:
         else:
             xml_bytes = source
         try:
-            out_io = io.BytesIO()
-            out_io.write(xml_bytes)
-            out_io.seek(0)
+            out_io = io.BytesIO(xml_bytes)
             yield out_io
         finally:
             out_io.close()
@@ -108,7 +106,21 @@ def _update_num_events(mg_info, new_num: int):
     return mg_info
 
 
-def split(source: str, stride: int):
+def count_events(source: _LHE_STORAGE) -> int:
+    with source_adapter(source) as xml_source:
+        event_parser = etree.iterparse(
+                source=xml_source,
+                tag=('event',),
+                **_parse_kwargs
+                )
+        num_events = 0
+        for _, event in event_parser:
+            num_events = num_events + 1
+            event.clear()
+    return num_events
+
+
+def split(source: _LHE_STORAGE, stride: int):
     """Generator, splitting LHE file content into separate bytestrings
     representing LHE files, with maximum number of events per bytestring
     equal to stride.

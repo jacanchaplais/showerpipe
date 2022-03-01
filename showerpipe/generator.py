@@ -19,16 +19,16 @@ planned to include HerwigGenerator and AriadneGenerator interfaces.
 
 import os
 import tempfile
-import gzip
 import shutil
 from functools import cached_property
+from typing import Optional
 
 import numpy as np
-from typicle import Types
+from typicle import Types  # type: ignore
 
 from showerpipe._base import GeneratorAdapter
 from showerpipe import _dataframe
-from showerpipe.lhe import load_lhe
+from showerpipe.lhe import count_events, source_adapter, _LHE_STORAGE
 
 
 class PythiaGenerator(GeneratorAdapter):
@@ -40,8 +40,9 @@ class PythiaGenerator(GeneratorAdapter):
     ----------
     config_file : str
         Path to Pythia .cmnd configuration file.
-    me_file : str, optional
-        Path to matrix element data file, ie. LHE file
+    me_file : Pathlike, string, or bytes
+        The variable or filepath containing the LHE data. May be a path,
+        string, or bytes object. If file, may be compressed with gzip.
     rng_seed : int
         Seed passed to the random number generator used by Pythia.
     types : typicle.Types
@@ -72,29 +73,29 @@ class PythiaGenerator(GeneratorAdapter):
     import pythia8 as __pythia_lib
     import pandas as __pd
 
-
-    def __init__(self, config_file: str, me_file: str=None, rng_seed: int=1,
-                 types: Types=Types()):
+    def __init__(
+            self,
+            config_file: str,
+            me_file: Optional[_LHE_STORAGE] = None,
+            rng_seed: int = 1,
+            types: Types = Types()
+    ):
         self.xml_dir = os.environ['PYTHIA8DATA']
         pythia = self.__pythia_lib.Pythia(
                 xmlDir=self.xml_dir, printBanner=False)
         pythia.readFile(config_file)
+        pythia.readString("Print:quiet = on")
         pythia.readString("Random:setSeed = on")
         pythia.readString(f"Random:seed = {rng_seed}")
         if me_file is not None:
-            try:
+            self.__num_events = count_events(me_file)
+            with source_adapter(me_file) as lhe_file:
                 self.temp_me_file = tempfile.NamedTemporaryFile()
-                with gzip.open(me_file) as lhe_file:
-                    shutil.copyfileobj(lhe_file, self.temp_me_file)
+                shutil.copyfileobj(lhe_file, self.temp_me_file)
                 self.temp_me_file.seek(0)
                 me_path = self.temp_me_file.name
-            except gzip.BadGzipFile:
-                me_path = me_file
             pythia.readString("Beams:frameType = 4")
             pythia.readString(f"Beams:LHEF = {me_path}")
-            lhe_data = load_lhe(me_path)
-            self.__num_events = lhe_data.num_events
-        pythia.readString("Print:quiet = on")
         pythia.init()
         pmu_type = types.pmu[0][1]
         color_type = types.color[0][1]
