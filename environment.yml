@@ -2,12 +2,11 @@ name: showerpipe
 
 channels:
   - conda-forge
-  - defaults
 
 dependencies:
   - pip
   - python>=3.7
-  - pyyaml
+  - omegaconf
   - lxml
   - numpy
   - pandas
