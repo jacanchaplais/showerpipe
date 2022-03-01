@@ -12,5 +12,6 @@ dependencies:
   - numpy
   - pandas
   - pythia8
+  - mpi4py
   - pip:
-    - git+https://github.com/jacanchaplais/showerpipe.git#egg=showerpipe
+    - showerpipe
