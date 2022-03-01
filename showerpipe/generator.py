@@ -127,7 +127,7 @@ class PythiaGenerator(GeneratorAdapter):
                     'Length only defined when initialised with LHE file.')
 
     def __next__(self):
-        if self.__pythia == None:
+        if self.__pythia is None:
             raise RuntimeError("Pythia generator not initialised.")
         is_next = self.__pythia.next()
         if not is_next:
