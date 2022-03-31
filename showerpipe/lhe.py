@@ -11,12 +11,14 @@ import io
 import os
 import re
 import gzip
+import requests  # type: ignore
 from contextlib import contextmanager
 from pathlib import Path
 from copy import deepcopy
 from itertools import chain
 from functools import cached_property
 from xml.sax.saxutils import unescape
+from urllib.parse import urlparse
 
 from lxml import etree  # type: ignore
 
@@ -40,7 +42,7 @@ def source_adapter(source: _LHE_STORAGE) -> Iterator[BinaryIO]:
     ----------
     source : Pathlike, string, or bytes
         The variable or filepath containing the LHE data. May be a path,
-        string, or bytes object. If file, may be compressed with gzip.
+        url, string, or bytes object. Gzip compression is allowed.
 
     Returns
     -------
@@ -49,8 +51,15 @@ def source_adapter(source: _LHE_STORAGE) -> Iterator[BinaryIO]:
         io.BytesIO if source is string or bytestring, and
         io.BufferedReader if source is filepath.
     """
-    if (not isinstance(source, bytes)) and os.path.exists(source):
-        path = Path(source)
+    is_bytes = isinstance(source, bytes)
+    is_str = isinstance(source, str)
+    is_path = os.path.exists(source)
+    is_url = False
+    if is_str:
+        is_url = bool(urlparse(source).netloc)  # type: ignore
+
+    if is_path:  # provide a file-object referring to the actual file
+        path = Path(source)  # type: ignore
         try:
             with open(path, 'r') as lhe_filecheck:
                 lhe_filecheck.read(1)
@@ -63,10 +72,17 @@ def source_adapter(source: _LHE_STORAGE) -> Iterator[BinaryIO]:
             yield lhe_file
         finally:
             lhe_file.close()
-    elif isinstance(source, str) or isinstance(source, bytes):
-        if isinstance(source, str):
+    elif is_str or is_bytes or is_url:  # create a BytesIO file-object
+        if is_url:
+            lhe_request = requests.get(source)
+            lhe_content = lhe_request.content
+            try:
+                xml_bytes = gzip.decompress(lhe_content)
+            except gzip.BadGzipFile:
+                xml_bytes = lhe_content
+        elif is_str:
             xml_bytes = source.encode()
-        else:
+        elif is_bytes:
             xml_bytes = source
         try:
             out_io = io.BytesIO(xml_bytes)
