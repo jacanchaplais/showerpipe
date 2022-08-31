@@ -53,6 +53,8 @@ class PythiaGenerator(GeneratorAdapter):
     out : iterator
         Upon iteration a new particle shower is triggered, whose data
         is accessible via the following properties:
+            count : int
+                The number of particles within the current event.
             edges : ndarray
                 Edge list representing generation ancestry of the event
                 as a directed acyclic graph.
@@ -68,6 +70,19 @@ class PythiaGenerator(GeneratorAdapter):
             final : ndarray
                 Mask over the particle list, to extract only those in
                 their final state.
+            helicity : ndarray
+                Polarisation values of each particle, where 9 is a
+                sentinel for undefined values.
+            status : ndarray
+                Pythia status codes describing the role of the particle
+                during the evolution.
+                See Pythia documentation
+                https://pythia.org/latest-manual/ParticleProperties.html
+
+            Notes
+            -----
+            The len dunder provides the number of events in the
+            iterator, not to be confused with the count attribute.
     """
 
     import pythia8 as __pythia_lib
@@ -199,14 +214,8 @@ class PythiaGenerator(GeneratorAdapter):
 
     @property
     def helicity(self) -> np.ndarray:
-        """The polarisation of the particles. Particles without a
-        polarisation (or where it is unknown) have a value of 9.
-        """
         return self.__event_df['helicity'].values
 
     @property
     def status(self) -> np.ndarray:
-        """Pythia-specific status codes. See link for details.
-        https://pythia.org/latest-manual/ParticleProperties.html
-        """
         return self.__event_df['status'].values
