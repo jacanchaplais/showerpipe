@@ -2,7 +2,7 @@
 ``showerpipe.lhe``
 ==================
 
-The ShowerPipe Les Houches functions utilise xml parsing techniques to 
+The ShowerPipe Les Houches functions utilise xml parsing techniques to
 redistribute and repeat hard events, outputting valid lhe files.
 """
 
@@ -24,10 +24,10 @@ from lxml import etree  # type: ignore
 
 
 _parse_kwargs = dict(
-        resolve_entities=False,
-        remove_comments=False,
-        strip_cdata=False,
-        )
+    resolve_entities=False,
+    remove_comments=False,
+    strip_cdata=False,
+)
 
 
 _LHE_STORAGE = Union[Path, str, bytes]
@@ -61,12 +61,12 @@ def source_adapter(source: _LHE_STORAGE) -> Iterator[BinaryIO]:
     if is_path:  # provide a file-object referring to the actual file
         path = Path(source)  # type: ignore
         try:
-            with open(path, 'r') as lhe_filecheck:
+            with open(path, "r") as lhe_filecheck:
                 lhe_filecheck.read(1)
-            lhe_file = open(path, 'rb')
+            lhe_file = open(path, "rb")
             yield lhe_file
         except UnicodeDecodeError:
-            lhe_file = gzip.open(path, 'rb')  # type: ignore
+            lhe_file = gzip.open(path, "rb")  # type: ignore
             lhe_file.read(1)
             lhe_file.seek(0)
             yield lhe_file
@@ -104,11 +104,11 @@ def load_lhe(path: str) -> bytes:
 
 
 def _get_mg_info(header_element):
-    return header_element.find('MGGenerationInfo')
+    return header_element.find("MGGenerationInfo")
 
 
 def _read_num_events(mg_info) -> int:
-    re_num = re.findall('\d+', mg_info.text)
+    re_num = re.findall("\d+", mg_info.text)
     num_events = int(re_num[0])
     return num_events
 
@@ -116,19 +116,17 @@ def _read_num_events(mg_info) -> int:
 def _update_num_events(mg_info, new_num: int):
     mg_info = deepcopy(mg_info)
     prev_num = _read_num_events(mg_info)
-    mg_info_list = mg_info.text.split('\n')
+    mg_info_list = mg_info.text.split("\n")
     mg_info_list[1] = mg_info_list[1].replace(str(prev_num), str(new_num))
-    mg_info.text = '\n'.join(mg_info_list)
+    mg_info.text = "\n".join(mg_info_list)
     return mg_info
 
 
 def count_events(source: _LHE_STORAGE) -> int:
     with source_adapter(source) as xml_source:
         event_parser = etree.iterparse(
-                source=xml_source,
-                tag=('event',),
-                **_parse_kwargs
-                )
+            source=xml_source, tag=("event",), **_parse_kwargs
+        )
         num_events = 0
         for _, event in event_parser:
             num_events = num_events + 1
@@ -158,23 +156,21 @@ def split(source: _LHE_STORAGE, stride: int):
     Particularly useful for large LHE files, which cannot fit in memory.
     """
     with source_adapter(source) as xml_source:
-        lhe_root_tagname = 'LesHouchesEvents'
+        lhe_root_tagname = "LesHouchesEvents"
         lhe_root_parser = etree.iterparse(
-                source=xml_source,
-                events=('start',),
-                tag=(lhe_root_tagname,),
-                **_parse_kwargs
-                )
+            source=xml_source,
+            events=("start",),
+            tag=(lhe_root_tagname,),
+            **_parse_kwargs
+        )
         _, lhe_root_meta = next(lhe_root_parser)
         lhe_root_template = etree.Element(lhe_root_tagname)
-        lhe_root_template.set('version', lhe_root_meta.get('version'))
+        lhe_root_template.set("version", lhe_root_meta.get("version"))
 
         xml_source.seek(0)
         header_parser = etree.iterparse(
-                source=xml_source,
-                tag=('header', 'init'),
-                **_parse_kwargs
-                )
+            source=xml_source, tag=("header", "init"), **_parse_kwargs
+        )
         _, header = next(header_parser)
         _, init = next(header_parser)
         lhe_root_template.append(header)
@@ -190,35 +186,37 @@ def split(source: _LHE_STORAGE, stride: int):
 
         xml_source.seek(0)
         event_parser = etree.iterparse(
-                source=xml_source,
-                tag=('event',),
-                **_parse_kwargs
-                )
+            source=xml_source, tag=("event",), **_parse_kwargs
+        )
 
         for split in splits:
             lhe_root = deepcopy(lhe_root_template)
             split_header = lhe_root[0]
             split_mg_info = _get_mg_info(split_header)
             split_header.replace(
-                    split_mg_info,
-                    _update_num_events(split_mg_info, new_num=split),
-                    )
-            for event_num in range(split):
+                split_mg_info,
+                _update_num_events(split_mg_info, new_num=split),
+            )
+            for _ in range(split):
                 _, event = next(event_parser)
                 lhe_root.append(deepcopy(event))
                 event.clear(keep_tail=True)
             yield etree.tostring(lhe_root)
 
-    
+
 def _root_to_bytes(root):
     content_invalid = etree.tostring(root)
-    def unescape_bytes(x): return unescape(x.decode()).encode()
+
+    def unescape_bytes(x):
+        return unescape(x.decode()).encode()
+
     content = unescape_bytes(content_invalid)
     return content
 
 
 class LheData:
     """Container for the Les Houches file content."""
+
     def __init__(self, content: bytes):
         self.__root = etree.fromstring(content)
 
@@ -234,11 +232,11 @@ class LheData:
 
     @cached_property
     def num_events(self):
-        return len(self.__root.findall('event'))
+        return len(self.__root.findall("event"))
 
     @property
     def __event_iter(self):
-        return self.__root.iter('event')
+        return self.__root.iter("event")
 
     def repeat(self, repeats: int, inplace: bool = False) -> bytes:
         """Modifies LHE content, repeating each event the number of
@@ -264,8 +262,7 @@ class LheData:
         the content explicitly to bytestring output, but may lead to
         unexpected side effects. Should be used with caution.
         """
-        return self.__event_duplicator(
-                repeats, inplace, dup_strat=self.__repeat_order)
+        return self.__event_duplicator(repeats, inplace, dup_strat=self.__repeat_order)
 
     def tile(self, repeats: int, inplace: bool = False) -> bytes:
         """Modifies LHE content, tile repeating all events the
@@ -291,15 +288,17 @@ class LheData:
         the content explicitly to bytestring output, but may lead to
         unexpected side effects. Should be used with caution.
         """
-        return self.__event_duplicator(
-                repeats, inplace, dup_strat=self.__tile_order)
+        return self.__event_duplicator(repeats, inplace, dup_strat=self.__tile_order)
 
-    def __tile_order(self, x): return x
-    def __repeat_order(self, x): return zip(*x)
+    def __tile_order(self, x):
+        return x
+
+    def __repeat_order(self, x):
+        return zip(*x)
 
     def __build_root(self, event_iter):
         root = deepcopy(self.__root)
-        for event in root.findall('event'):
+        for event in root.findall("event"):
             root.remove(event)
         for event in event_iter:
             root.append(event)
