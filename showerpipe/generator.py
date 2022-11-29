@@ -1,6 +1,6 @@
 """
 ``showerpipe.generator``
-=====================
+========================
 
 The ShowerPipe Generator module provides a standardised Pythonic
 interface to showering and hadronisation programs.
@@ -16,206 +16,258 @@ implemented, however this module may be extended with additional
 concrete implementations of GeneratorAdapter. Future versions are
 planned to include HerwigGenerator and AriadneGenerator interfaces.
 """
-
 import os
 import tempfile
 import shutil
+from pathlib import Path
+from typing import Optional, Any, TypeVar, Generic, Iterable, Dict, Tuple, Union
+from collections.abc import Sized
+from dataclasses import dataclass
+import operator as op
+import random
 from functools import cached_property
-from typing import Optional
 
 import numpy as np
-from typicle import Types  # type: ignore
+import numpy.lib.recfunctions as rfn
+import numpy.typing as npt
+import pandas as pd
+import pythia8 as _pythia8
 
 from showerpipe._base import GeneratorAdapter
-from showerpipe import _dataframe
 from showerpipe.lhe import count_events, source_adapter, _LHE_STORAGE
+
+
+BoolVector = npt.NDArray[np.bool_]
+IntVector = npt.NDArray[np.int32]
+HalfIntVector = npt.NDArray[np.int16]
+AnyVector = npt.NDArray[Any]
+E = TypeVar("E", bound=Iterable[Any])
+
+
+def _vertex_df(event_df: pd.DataFrame) -> pd.DataFrame:
+    vertex_df = event_df.reset_index()
+    vertex_df = vertex_df.pivot_table(
+        index="parents",
+        values=["index"],
+        aggfunc=lambda x: tuple(x.to_list()),  # type: ignore
+    )
+    vertex_df = vertex_df.reset_index()
+    vertex_df = vertex_df.rename(columns={"parents": "in", "index": "out"})
+    vertex_df.index.name = "id"
+    return vertex_df
+
+
+def _unpack(vtx_df: pd.DataFrame, direction: str) -> pd.DataFrame:
+    vtx_col: pd.DataFrame = vtx_df[direction].reset_index()  # type: ignore
+    vtx_col = vtx_col.explode(direction)
+    vtx_col = vtx_col.set_index(direction)  # type: ignore
+    vertex_to_edge = {"in": "out", "out": "in"}
+    vtx_col.index.name = "index"
+    vtx_col = vtx_col.rename(columns={"id": vertex_to_edge[direction]})
+    return vtx_col
+
+
+def _add_edge_cols(event_df: pd.DataFrame, vertex_df: pd.DataFrame) -> pd.DataFrame:
+    edge_out = _unpack(vertex_df, "out")
+    edge_in = _unpack(vertex_df, "in")
+    shower_df = event_df.join(edge_out)
+    shower_df = shower_df.join(edge_in)
+    edge_df = shower_df[["in", "out"]]
+    if edge_df is None:
+        raise ValueError
+    if shower_df is None:
+        raise ValueError
+    max_id = edge_df.stack().max()
+    isna: pd.Series = shower_df["out"].isna()  # type: ignore
+    final: pd.Series = shower_df["final"]  # type: ignore
+    num_final = np.sum(final)
+    final_ids = -1 * np.arange(max_id + 1, max_id + num_final + 1)
+    if not shower_df[isna]["final"].all():  # type: ignore
+        raise RuntimeError(
+            "Failed to add edges! Some outgoing vertices are not defined. "
+            + "Please report this to maintainers."
+        )
+    shower_df.loc[(final, "out")] = final_ids
+    shower_df["out"] = shower_df["out"].astype("<i4")  # type: ignore
+    return shower_df
+
+
+@dataclass
+class PythiaEvent(Generic[E], Sized):
+    """Interface wrapping the Pythia8 events, providing access to the
+    event data via numpy arrays.
+
+    Attributes
+    ----------
+    pdg : ndarray[int32]
+        Particle Data Group identification codes for the particle set.
+    pmu : structured ndarray[float64] with "x", "y", "z", "e" fields
+        Four-momenta of the particle set.
+    color : structured ndarray[int32] with "color", "anticolor" fields
+        Colour codes assigned to each generated particle.
+    helicity : ndarray[int16]
+        Helicity eigenvalues for the particle set. Pythia uses a value
+        of 9 as a sentinel to identify no eigenvalue.
+    status : ndarray[int16]
+        Status codes annotating each particle with a description of
+        its method of creation and purpose.
+        See https://pythia.org/latest-manual/ParticleProperties.html.
+    final : ndarray[bool_]
+        Boolean mask over the particle set, identifying final resulting
+        particles at the end of the simulation. The leaves of the DAG
+        representation.
+    edges : structured ndarray[int32] with "in", "out" fields
+        Describes the heritage of the generate particle set with a DAG,
+        formatted as a COO adjacency list.
+
+    Methods
+    -------
+    copy()
+        Produces a new event with identical particle records.
+    """
+
+    _event: E
+
+    @cached_property
+    def _pcls(self) -> Tuple[Any, ...]:
+        return tuple(filter(lambda pcl: pcl.id() != 90, self._event))
+
+    def __len__(self) -> int:
+        """The number of particles in the event."""
+        return self._event.size() - 1  # type: ignore
+
+    def _prop_map(self, prp: str) -> Iterable[Tuple[Any, ...]]:
+        return map(op.methodcaller(prp), self._pcls)
+
+    def _extract_struc(self, schema: Dict[str, Tuple[str, npt.DTypeLike]]) -> AnyVector:
+        dtype = np.dtype(list(schema.values()))
+        return np.fromiter(zip(*map(self._prop_map, schema.keys())), dtype)
+
+    @property
+    def edges(self) -> AnyVector:
+        edge_df = pd.DataFrame(
+            self._extract_struc({"index": ("index", "<i4"), "isFinal": ("final", "<?")})
+        )
+        edge_df["parents"] = tuple(
+            map(lambda x: tuple(sorted(x)), self._prop_map("motherList"))
+        )
+        edge_df = edge_df.set_index("index")
+        vertex_df = _vertex_df(edge_df)  # type: ignore
+        edge_df = _add_edge_cols(edge_df, vertex_df)  # type: ignore
+        edge_df = edge_df.drop(columns=["parents", "final"])
+        edge_df["out"] *= -1  # type: ignore
+        edge_df["in"] *= -1  # type: ignore
+        return rfn.unstructured_to_structured(
+            edge_df[["in", "out"]].values,  # type: ignore
+            dtype=np.dtype([("in", "<i4"), ("out", "<i4")]),
+        )
+
+    @property
+    def pmu(self) -> AnyVector:
+        return self._extract_struc(
+            {
+                "px": ("x", "<f8"),
+                "py": ("y", "<f8"),
+                "pz": ("z", "<f8"),
+                "e": ("e", "<f8"),
+            }
+        )
+
+    @property
+    def color(self) -> AnyVector:
+        return self._extract_struc(
+            {
+                "col": ("color", "<i4"),
+                "acol": ("anticolor", "<i4"),
+            }
+        )
+
+    @property
+    def pdg(self) -> IntVector:
+        return np.fromiter(self._prop_map("id"), np.int32)
+
+    @property
+    def final(self) -> BoolVector:
+        return np.fromiter(self._prop_map("isFinal"), np.bool_)
+
+    @property
+    def helicity(self) -> HalfIntVector:
+        return np.fromiter(self._prop_map("pol"), np.int16)
+
+    @property
+    def status(self) -> HalfIntVector:
+        return np.fromiter(self._prop_map("status"), np.int16)
+
+    def copy(self) -> "PythiaEvent[E]":
+        new_event = _pythia8.Event()
+        for pcl in self._event:
+            new_event.append(pcl)
+        return self.__class__(new_event)
 
 
 class PythiaGenerator(GeneratorAdapter):
     """Wrapper of Pythia8 generator. Provides an iterator over
-    successive showered events, whose properties expose the data
-    generated via NumPy arrays.
+    successive showered events in a PythiaEvent instance, whose
+    properties expose the data via NumPy arrays.
 
     Parameters
     ----------
     config_file : str
         Path to Pythia .cmnd configuration file.
-    me_file : Pathlike, string, or bytes
+    lhe_file : Pathlike, string, or bytes
         The variable or filepath containing the LHE data. May be a path,
         string, or bytes object. If file, may be compressed with gzip.
     rng_seed : int
         Seed passed to the random number generator used by Pythia.
     types : typicle.Types
         Data container defining the types of the output physics data.
-
-    Returns
-    -------
-    out : iterator
-        Upon iteration a new particle shower is triggered, whose data
-        is accessible via the following properties:
-            count : int
-                The number of particles within the current event.
-            edges : ndarray
-                Edge list representing generation ancestry of the event
-                as a directed acyclic graph.
-                Provided in a structured array, with fields 'in', 'out'.
-            pmu : ndarray
-                Four momentum provided in a structured array, with
-                fields 'x', 'y', 'z', 'e'.
-            pdg : ndarray
-                Particle Data Group identity codes for each particle.
-            color : ndarray
-                Color / anticolor pairs for each particle, provided
-                in a structured array with fields 'color', 'anticolor'.
-            final : ndarray
-                Mask over the particle list, to extract only those in
-                their final state.
-            helicity : ndarray
-                Polarisation values of each particle, where 9 is a
-                sentinel for undefined values.
-            status : ndarray
-                Pythia status codes describing the role of the particle
-                during the evolution.
-                See Pythia documentation
-                https://pythia.org/latest-manual/ParticleProperties.html
-
-            Notes
-            -----
-            The len dunder provides the number of events in the
-            iterator, not to be confused with the count attribute.
     """
 
-    import pythia8 as __pythia_lib
-    import pandas as __pd
-
     def __init__(
-            self,
-            config_file: str,
-            me_file: Optional[_LHE_STORAGE] = None,
-            rng_seed: int = 1,
-            types: Types = Types()
-    ):
-        self.xml_dir = os.environ['PYTHIA8DATA']
-        pythia = self.__pythia_lib.Pythia(
-                xmlDir=self.xml_dir, printBanner=False)
-        pythia.readFile(config_file)
+        self,
+        config_file: Union[str, Path],
+        lhe_file: Optional[_LHE_STORAGE] = None,
+        rng_seed: Optional[int] = -1,
+    ) -> None:
+        if rng_seed is None:
+            rng_seed = random.randint(1, 900_000_000)
+        elif rng_seed < -1:
+            raise ValueError("rng_seed must be between -1 and 900_000_000.")
+        self.xml_dir = os.environ["PYTHIA8DATA"]
+        pythia = _pythia8.Pythia(xmlDir=self.xml_dir, printBanner=False)
+        pythia.readFile(str(config_file))
         pythia.readString("Print:quiet = on")
         pythia.readString("Random:setSeed = on")
         pythia.readString(f"Random:seed = {rng_seed}")
-        if me_file is not None:
-            self.__num_events = count_events(me_file)
-            with source_adapter(me_file) as lhe_file:
-                self.temp_me_file = tempfile.NamedTemporaryFile()
-                shutil.copyfileobj(lhe_file, self.temp_me_file)
-                self.temp_me_file.seek(0)
-                me_path = self.temp_me_file.name
+        if lhe_file is not None:
+            self._num_events = count_events(lhe_file)
+            with source_adapter(lhe_file) as f:
+                self.temp_lhe_file = tempfile.NamedTemporaryFile()
+                shutil.copyfileobj(f, self.temp_lhe_file)
+                self.temp_lhe_file.seek(0)
+                me_path = self.temp_lhe_file.name
             pythia.readString("Beams:frameType = 4")
             pythia.readString(f"Beams:LHEF = {me_path}")
         pythia.init()
-        pmu_type = types.pmu[0][1]
-        color_type = types.color[0][1]
-        edge_type = types.edge[0][1]
-        self.__types = {
-                'pdg': types.pdg,
-                'final': types.final,
-                'x': pmu_type,
-                'y': pmu_type,
-                'z': pmu_type,
-                'e': pmu_type,
-                'color': color_type,
-                'anticolor': color_type,
-                'in': edge_type,
-                'out': edge_type,
-                'status': types.h_int,
-                'helicity': types.h_int,
-                }
-        self.__pythia = pythia
-    
-    def __iter__(self):
-        return self
+        self._pythia = pythia
+        self._event = PythiaEvent(pythia.event)
+
+    def __next__(self) -> PythiaEvent:
+        if self._pythia is None:
+            raise RuntimeError("Pythia generator not initialised.")
+        if hasattr(self._event, "_pcls"):
+            del self._event._pcls
+        is_next = self._pythia.next()
+        if not is_next:
+            if hasattr(self, "temp_lhe_file"):
+                self.temp_lhe_file.close()
+            raise StopIteration
+        return self._event
 
     def __len__(self):
         try:
-            return self.__num_events
+            return self._num_events
         except AttributeError:
             raise NotImplementedError(
-                    'Length only defined when initialised with LHE file.')
-
-    def __next__(self):
-        if self.__pythia is None:
-            raise RuntimeError("Pythia generator not initialised.")
-        is_next = self.__pythia.next()
-        if not is_next:
-            if hasattr(self, 'temp_me_file'):
-                self.temp_me_file.close()
-            raise StopIteration("No more events left to be showered.")
-        if self.__event_df is not None:
-            del self.__event_df
-        if self.count is not None:
-            del self.count
-        return self
-
-    @cached_property
-    def __event_df(self) -> __pd.DataFrame:
-        def sorted_tuple(iterable):
-            list_object = list(iterable)
-            list_object.sort()
-            return tuple(list_object)
-        event_df = self.__pd.DataFrame(
-            map(lambda pcl: {
-                    'index': pcl.index(),
-                    'pdg': pcl.id(),
-                    'final': pcl.isFinal(),
-                    'x': pcl.px(),
-                    'y': pcl.py(),
-                    'z': pcl.pz(),
-                    'e': pcl.e(),
-                    'color': pcl.col(),
-                    'status': pcl.status(),
-                    'helicity': pcl.pol(),
-                    'anticolor': pcl.acol(),
-                    'parents': sorted_tuple(pcl.motherList()),
-                }, self.__pythia.event),
+                "Length only defined when initialised with LHE file."
             )
-        event_df = event_df.set_index('index')
-        event_df = event_df[event_df['pdg'] != 90]
-        vertex_df = _dataframe.vertex_df(event_df)
-        event_df = _dataframe.add_edge_cols(event_df, vertex_df)
-        event_df = event_df.drop(columns=['parents'])
-        event_df = event_df.astype(self.__types, copy=False)
-        event_df['out'] *= -1
-        event_df['in'] *= -1
-        return event_df
-
-    @cached_property
-    def count(self) -> int:
-        """The number of particles in the event."""
-        return len(self.__event_df)
-
-    @property
-    def edges(self) -> np.ndarray:
-        return _dataframe.df_to_struc(self.__event_df[['in', 'out']])
-
-    @property
-    def pmu(self) -> np.ndarray:
-        return _dataframe.df_to_struc(self.__event_df[['x', 'y', 'z', 'e']])
-
-    @property
-    def color(self) -> np.ndarray:
-        return _dataframe.df_to_struc(self.__event_df[['color', 'anticolor']])
-
-    @property
-    def pdg(self) -> np.ndarray:
-        return self.__event_df['pdg'].values
-
-    @property
-    def final(self) -> np.ndarray:
-        return self.__event_df['final'].values
-
-    @property
-    def helicity(self) -> np.ndarray:
-        return self.__event_df['helicity'].values
-
-    @property
-    def status(self) -> np.ndarray:
-        return self.__event_df['status'].values
