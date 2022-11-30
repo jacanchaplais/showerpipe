@@ -35,6 +35,7 @@ from dataclasses import dataclass
 import operator as op
 import random
 from functools import cached_property
+from copy import deepcopy
 
 import numpy as np
 import numpy.lib.recfunctions as rfn
@@ -270,7 +271,7 @@ class PythiaGenerator(GeneratorAdapter):
                 key, val = line.partition("=")[::2]
                 sup_key, sub_key = map(lambda s: s.strip(), key.split(":"))
                 config.setdefault(sup_key, dict())
-                config[sup_key][sub_key] = val
+                config[sup_key][sub_key] = val.strip()
         self.config = config
         self._pythia = pythia
         self._event = PythiaEvent(pythia.event)
@@ -374,14 +375,15 @@ def repeat_hadronize(
             "next(gen) and try again."
         )
     hadron_key = "HadronLevel"
-    if hadron_key not in gen.config:
+    conf_copy = deepcopy(gen.config)
+    if hadron_key not in conf_copy:
         hadron_level = "on"
     else:
-        hadron_level = gen.config[hadron_key].pop("all", "on")
-        if len(gen.config[hadron_key]) > 0:
+        hadron_level = conf_copy[hadron_key].pop("all", "on")
+        if len(conf_copy[hadron_key]) > 0:
             raise RuntimeError(
                 f"Conflicting settings for {hadron_key} provided, "
-                f"including {tuple(gen.config[hadron_key].keys())}. "
+                f"including {tuple(conf_copy[hadron_key].keys())}. "
                 f"Please remove all other {hadron_key} flags, apart from "
                 "'all', from the cmnd file and try again."
             )
