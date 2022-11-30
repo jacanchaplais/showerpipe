@@ -292,7 +292,7 @@ class PythiaGenerator(GeneratorAdapter):
                 pythia.readString(f"{group_key}:{key} = {val}")
         pythia.init()
         self.config = config
-        self.xml_dir = xml_dir
+        self.xml_dir = Path(xml_dir)
         self._pythia = pythia
         self._event = PythiaEvent(pythia.event)
         self._fresh_event = True
