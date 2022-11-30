@@ -409,9 +409,9 @@ def repeat_hadronize(
         if gen._fresh_event is True:  # stop if entirely new event generated
             break
         gen._pythia.forceHadronLevel()
-        if copy is False:
-            yield gen._event
-        else:
-            yield gen._event.copy()
+        event_out = gen._event
+        if copy is True:
+            event_out = event_out.copy()
+        yield event_out
         gen.overwrite_event(event_copy)
         i = i + 1
