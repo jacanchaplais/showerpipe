@@ -6,7 +6,7 @@ The ShowerPipe Les Houches functions utilise xml parsing techniques to
 redistribute and repeat hard events, outputting valid lhe files.
 """
 
-from typing import Optional, Union, BinaryIO, Iterator
+from typing import Union, BinaryIO, Iterator
 import io
 import os
 import re
@@ -262,7 +262,9 @@ class LheData:
         the content explicitly to bytestring output, but may lead to
         unexpected side effects. Should be used with caution.
         """
-        return self.__event_duplicator(repeats, inplace, dup_strat=self.__repeat_order)
+        return self.__event_duplicator(
+            repeats, inplace, dup_strat=self.__repeat_order
+        )
 
     def tile(self, repeats: int, inplace: bool = False) -> bytes:
         """Modifies LHE content, tile repeating all events the
@@ -288,7 +290,9 @@ class LheData:
         the content explicitly to bytestring output, but may lead to
         unexpected side effects. Should be used with caution.
         """
-        return self.__event_duplicator(repeats, inplace, dup_strat=self.__tile_order)
+        return self.__event_duplicator(
+            repeats, inplace, dup_strat=self.__tile_order
+        )
 
     def __tile_order(self, x):
         return x
