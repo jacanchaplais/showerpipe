@@ -3,18 +3,11 @@
 ========================
 
 The ShowerPipe Generator module provides a standardised Pythonic
-interface to showering and hadronisation programs.
+interface to showering and hadronisation programs. Currently only Pythia
+is supported.
 
-Data is generated using Python iterator objects, and provided in
-NumPy arrays.
-
-Notes
------
-The classes provided here are concrete implementations of the abstract
-GeneratorAdapter class. Currently only PythiaGenerator has been
-implemented, however this module may be extended with additional
-concrete implementations of GeneratorAdapter. Future versions are
-planned to include HerwigGenerator and AriadneGenerator interfaces.
+Data is generated using Python iterator objects, and provided in NumPy
+arrays.
 """
 import os
 import tempfile
@@ -218,6 +211,7 @@ class PythiaEvent(Generic[E], Sized):
         return np.fromiter(self._prop_map("status"), np.int16)
 
     def copy(self) -> "PythiaEvent[E]":
+        """Returns a copy of the event."""
         return self.__class__(_pythia8.Event(self._event))
 
 
@@ -228,15 +222,31 @@ class PythiaGenerator(GeneratorAdapter):
 
     Parameters
     ----------
-    config_file : str
-        Path to Pythia .cmnd configuration file.
-    lhe_file : Pathlike, string, or bytes
+    config_file : pathlib.Path | str
+        Path to Pythia cmnd configuration file.
+    lhe_file : pathlib.Path | str | bytes, optional
         The variable or filepath containing the LHE data. May be a path,
         string, or bytes object. If file, may be compressed with gzip.
     rng_seed : int
         Seed passed to the random number generator used by Pythia.
-    types : typicle.Types
-        Data container defining the types of the output physics data.
+
+    Attributes
+    ----------
+    config : dict[str, dict[str, str]]
+        Settings flags passed to Pythia, formatted as a dict of dicts.
+    xml_dir : pathlib.Path
+        Path of the Pythia XML data directory.
+
+    Methods
+    -------
+    overwrite_event(new_event)
+        Overwrites the current event with ``new_event``.
+
+    Raises
+    ------
+    AttributeError
+        If length of iterator is accessed, without a LHE file passed as
+        a parameter.
     """
 
     def __init__(
