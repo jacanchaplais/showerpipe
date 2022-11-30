@@ -249,12 +249,19 @@ class PythiaGenerator(GeneratorAdapter):
             rng_seed = random.randint(1, 900_000_000)
         elif rng_seed < -1:
             raise ValueError("rng_seed must be between -1 and 900_000_000.")
-        self.xml_dir = os.environ["PYTHIA8DATA"]
-        pythia = _pythia8.Pythia(xmlDir=self.xml_dir, printBanner=False)
-        pythia.readFile(str(config_file))
-        pythia.readString("Print:quiet = on")
-        pythia.readString("Random:setSeed = on")
-        pythia.readString(f"Random:seed = {rng_seed}")
+        xml_dir = os.environ["PYTHIA8DATA"]
+        pythia = _pythia8.Pythia(xmlDir=xml_dir, printBanner=False)
+        config: Dict[str, Dict[str, str]] = {
+            "Print": {"quiet": "on"},
+            "Random": {"setSeed": "on", "seed": str(rng_seed)},
+            "Beams": {"frameType": "4"},
+        }
+        with open(config_file) as f:
+            for line in f:
+                key, val = line.partition("=")[::2]
+                sup_key, sub_key = map(lambda s: s.strip(), key.split(":"))
+                config.setdefault(sup_key, dict())
+                config[sup_key][sub_key] = val.strip()
         if lhe_file is not None:
             self._num_events = count_events(lhe_file)
             with source_adapter(lhe_file) as f:
@@ -262,17 +269,13 @@ class PythiaGenerator(GeneratorAdapter):
                 shutil.copyfileobj(f, self.temp_lhe_file)
                 self.temp_lhe_file.seek(0)
                 me_path = self.temp_lhe_file.name
-            pythia.readString("Beams:frameType = 4")
-            pythia.readString(f"Beams:LHEF = {me_path}")
+            config["Beams"]["LHEF"] = me_path
+        for group_key, group_val in config.items():
+            for key, val in group_val.items():
+                pythia.readString(f"{group_key}:{key} = {val}")
         pythia.init()
-        config: Dict[str, Dict[str, str]] = dict()
-        with open(config_file) as f:
-            for line in f:
-                key, val = line.partition("=")[::2]
-                sup_key, sub_key = map(lambda s: s.strip(), key.split(":"))
-                config.setdefault(sup_key, dict())
-                config[sup_key][sub_key] = val.strip()
         self.config = config
+        self.xml_dir = xml_dir
         self._pythia = pythia
         self._event = PythiaEvent(pythia.event)
         self._fresh_event = True
