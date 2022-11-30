@@ -348,9 +348,13 @@ def repeat_hadronize(
         ``reps``, or if this generator is invalidated by iterating
         the underlying ``PythiaGenerator`` instance passed to it.
     RuntimeError
-        If ``gen`` is passed without a current event to rehadronise, or
-        the cmnd file it was initialised with is missing the appropriate
-        flags (see notes).
+        If ``gen`` is passed without a current event to rehadronise.
+    KeyError
+        If the cmnd file used to initialise ``gen`` contains flags which
+        conflict with each other.
+    ValueError
+        If the cmnd file used to initialise ``gen`` does not set
+        'HadronLevel:all = off'. See notes for more information.
 
     Notes
     -----
@@ -381,14 +385,14 @@ def repeat_hadronize(
     else:
         hadron_level = conf_copy[hadron_key].pop("all", "on")
         if len(conf_copy[hadron_key]) > 0:
-            raise RuntimeError(
+            raise KeyError(
                 f"Conflicting settings for {hadron_key} provided, "
                 f"including {tuple(conf_copy[hadron_key].keys())}. "
                 f"Please remove all other {hadron_key} flags, apart from "
                 "'all', from the cmnd file and try again."
             )
     if hadron_level == "on":
-        raise RuntimeError(
+        raise ValueError(
             "In order to perform repeated hadronisation, hadronisation "
             "must be switched off in the settings cmnd file. "
             "Try initialising a new PythiaGenerator, setting the flag "
