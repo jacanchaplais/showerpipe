@@ -145,7 +145,10 @@ class PythiaEvent(Generic[E], Sized):
 
     def __len__(self) -> int:
         """The number of particles in the event."""
-        return self._event.size() - 1  # type: ignore
+        size = self._event.size()  # type: ignore
+        if size > 0:
+            size = size - 1
+        return size
 
     def _prop_map(self, prp: str) -> Iterable[Tuple[Any, ...]]:
         return map(op.methodcaller(prp), self._pcls)
@@ -214,10 +217,7 @@ class PythiaEvent(Generic[E], Sized):
         return np.fromiter(self._prop_map("status"), np.int16)
 
     def copy(self) -> "PythiaEvent[E]":
-        new_event = _pythia8.Event()
-        for pcl in self._event:
-            new_event.append(pcl)
-        return self.__class__(new_event)
+        return self.__class__(_pythia8.Event(self._event))
 
 
 class PythiaGenerator(GeneratorAdapter):
@@ -264,8 +264,14 @@ class PythiaGenerator(GeneratorAdapter):
             pythia.readString("Beams:frameType = 4")
             pythia.readString(f"Beams:LHEF = {me_path}")
         pythia.init()
+        self.config: Dict[str, str] = dict()
+        with open(config_file) as f:
+            for line in f:
+                key, val = line.partition("=")[::2]
+                self.config[key.strip()] = val.strip()
         self._pythia = pythia
         self._event = PythiaEvent(pythia.event)
+        self._fresh_event = True
 
     def __next__(self) -> PythiaEvent:
         if self._pythia is None:
@@ -273,6 +279,7 @@ class PythiaGenerator(GeneratorAdapter):
         if hasattr(self._event, "_pcls"):
             del self._event._pcls
         is_next = self._pythia.next()
+        self._fresh_event = True
         if not is_next:
             if hasattr(self, "temp_lhe_file"):
                 self.temp_lhe_file.close()
@@ -286,3 +293,102 @@ class PythiaGenerator(GeneratorAdapter):
             raise NotImplementedError(
                 "Length only defined when initialised with LHE file."
             )
+
+    def overwrite_event(self, new_event: PythiaEvent) -> None:
+        """Replaces contents of the current event in the generator.
+
+        Parameters
+        ----------
+        new_event : PythiaEvent
+            The event whose contents will overwrite the current event.
+        """
+        if hasattr(self._event, "_pcls"):
+            del self._event._pcls
+        self._event._event.clear()
+        for pcl in new_event._event:
+            self._event._event.append(pcl)
+
+
+def repeat_hadronize(
+    gen: PythiaGenerator, reps: Optional[int] = None, copy: bool = True
+) -> Iterable[PythiaEvent]:
+    """Takes a PythiaGenerator instance with an unhadronised event
+    already generated, and repeatedly hadronises the current event.
+
+    Parameters
+    ----------
+    gen : PythiaGenerator
+        Instance of ``PythiaGenerator`` which has already generated at
+        least one event, either by calling ``next(gen)``, or iterating
+        with a for-loop.
+    reps : int, optional
+        Number of repetitions to queue in the iterator. If ``None``,
+        will produce an infinite iterator.
+    copy : bool
+        Whether to return copies of the events, orphaned from ``gen``,
+        the passed ``PythiaGenerator`` instance. Setting this to
+        ``False`` may improve speed and reduce memory, but will have a
+        side-effect on ``gen``, such that its internal current event
+        will be set to the most recent event yielded by this generator.
+        Default is ``True``.
+
+    Yields
+    ------
+    event : PythiaEvent
+        The current event with new hadronisation.
+
+    Raises
+    ------
+    StopIteration
+        Either when the number of rehadronised events is equal to
+        ``reps``, or if this generator is invalidated by iterating
+        the underlying ``PythiaGenerator`` instance passed to it.
+    RuntimeError
+        If ``gen`` is passed without a current event to rehadronise, or
+        the cmnd file it was initialised with is missing the appropriate
+        flags (see notes).
+
+    Notes
+    -----
+    This function wraps the first method of rehadronisation described in
+    https://pythia.org/latest-manual/HadronLevelStandalone.html. In
+    order to use it, 'HadronLevel:all' must be set to 'off' in the
+    cmnd settings file that ``gen`` was initialised with.
+
+    If ``reps`` is set so the generator has a finite length, the
+    side-effects on ``gen`` will be reversed when the generator
+    yields its last element.
+
+    If ``reps`` is set to ``None`` and ``copy`` is set to ``False``,
+    the side-effects on ``gen`` will persist, until ``gen`` is iterated
+    either by passing it to ``next()`` or implicit iteration within a
+    for loop.
+    """
+    if len(gen._event) == 0:
+        raise RuntimeError(
+            "The passed PythiaGenerator instance must have at least one "
+            "event already generated to rehadronise. Please call "
+            "next(gen) and try again."
+        )
+    hadron_level = gen.config.get("HadronLevel:all", None)
+    if hadron_level is None or hadron_level == "on":
+        raise RuntimeError(
+            "In order to perform repeated hadronisation, hadronisation "
+            "must be switched off in the settings cmnd file. "
+            "Try initialising a new PythiaGenerator, setting the flag "
+            "'HadronLevel:all = off'."
+        )
+    event = gen._event
+    event_copy = event.copy()
+    gen._fresh_event = False
+    i = 0
+    while (reps is None) or (i < reps):
+        if gen._fresh_event is True:  # stop if entirely new event generated
+            break
+        gen._pythia.forceHadronLevel()
+        if copy is False:
+            yield gen._event
+        else:
+            yield gen._event.copy()
+        gen.overwrite_event(event_copy)
+        i = i + 1
