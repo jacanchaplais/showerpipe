@@ -91,7 +91,7 @@ def _add_edge_cols(
     if not shower_df[isna]["final"].all():  # type: ignore
         raise RuntimeError(
             "Failed to add edges! Some outgoing vertices are not defined. "
-            + "Please report this to maintainers."
+            "Please report this to maintainers."
         )
     shower_df.loc[(final, "out")] = final_ids
     shower_df["out"] = shower_df["out"].astype("<i4")  # type: ignore
