@@ -23,6 +23,7 @@ from typing import (
     Tuple,
     Union,
 )
+from collections import OrderedDict
 from collections.abc import Sized
 from dataclasses import dataclass
 import operator as op
@@ -148,7 +149,7 @@ class PythiaEvent(Generic[E], Sized):
         return map(op.methodcaller(prp), self._pcls)
 
     def _extract_struc(
-        self, schema: Dict[str, Tuple[str, npt.DTypeLike]]
+        self, schema: OrderedDict[str, Tuple[str, npt.DTypeLike]]
     ) -> AnyVector:
         dtype = np.dtype(list(schema.values()))
         return np.fromiter(zip(*map(self._prop_map, schema.keys())), dtype)
@@ -157,7 +158,9 @@ class PythiaEvent(Generic[E], Sized):
     def edges(self) -> AnyVector:
         edge_df = pd.DataFrame(
             self._extract_struc(
-                {"index": ("index", "<i4"), "isFinal": ("final", "<?")}
+                OrderedDict(
+                    {"index": ("index", "<i4"), "isFinal": ("final", "<?")}
+                )
             )
         )
         edge_df["parents"] = tuple(
@@ -177,21 +180,25 @@ class PythiaEvent(Generic[E], Sized):
     @property
     def pmu(self) -> AnyVector:
         return self._extract_struc(
-            {
-                "px": ("x", "<f8"),
-                "py": ("y", "<f8"),
-                "pz": ("z", "<f8"),
-                "e": ("e", "<f8"),
-            }
+            OrderedDict(
+                {
+                    "px": ("x", "<f8"),
+                    "py": ("y", "<f8"),
+                    "pz": ("z", "<f8"),
+                    "e": ("e", "<f8"),
+                }
+            )
         )
 
     @property
     def color(self) -> AnyVector:
         return self._extract_struc(
-            {
-                "col": ("color", "<i4"),
-                "acol": ("anticolor", "<i4"),
-            }
+            OrderedDict(
+                {
+                    "col": ("color", "<i4"),
+                    "acol": ("anticolor", "<i4"),
+                }
+            )
         )
 
     @property
