@@ -264,11 +264,14 @@ class PythiaGenerator(GeneratorAdapter):
             pythia.readString("Beams:frameType = 4")
             pythia.readString(f"Beams:LHEF = {me_path}")
         pythia.init()
-        self.config: Dict[str, str] = dict()
+        config: Dict[str, Dict[str, str]] = dict()
         with open(config_file) as f:
             for line in f:
                 key, val = line.partition("=")[::2]
-                self.config[key.strip()] = val.strip()
+                sup_key, sub_key = map(lambda s: s.strip(), key.split(":"))
+                config.setdefault(sup_key, dict())
+                config[sup_key][sub_key] = val
+        self.config = config
         self._pythia = pythia
         self._event = PythiaEvent(pythia.event)
         self._fresh_event = True
@@ -370,8 +373,19 @@ def repeat_hadronize(
             "event already generated to rehadronise. Please call "
             "next(gen) and try again."
         )
-    hadron_level = gen.config.get("HadronLevel:all", None)
-    if hadron_level is None or hadron_level == "on":
+    hadron_key = "HadronLevel"
+    if hadron_key not in gen.config:
+        hadron_level = "on"
+    else:
+        hadron_level = gen.config[hadron_key].pop("all", "on")
+        if len(gen.config[hadron_key]) > 0:
+            raise RuntimeError(
+                f"Conflicting settings for {hadron_key} provided, "
+                f"including {tuple(gen.config[hadron_key].keys())}. "
+                f"Please remove all other {hadron_key} flags, apart from "
+                "'all', from the cmnd file and try again."
+            )
+    if hadron_level == "on":
         raise RuntimeError(
             "In order to perform repeated hadronisation, hadronisation "
             "must be switched off in the settings cmnd file. "
