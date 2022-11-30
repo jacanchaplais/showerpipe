@@ -20,7 +20,16 @@ import os
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Optional, Any, TypeVar, Generic, Iterable, Dict, Tuple, Union
+from typing import (
+    Optional,
+    Any,
+    TypeVar,
+    Generic,
+    Iterable,
+    Dict,
+    Tuple,
+    Union,
+)
 from collections.abc import Sized
 from dataclasses import dataclass
 import operator as op
@@ -67,7 +76,9 @@ def _unpack(vtx_df: pd.DataFrame, direction: str) -> pd.DataFrame:
     return vtx_col
 
 
-def _add_edge_cols(event_df: pd.DataFrame, vertex_df: pd.DataFrame) -> pd.DataFrame:
+def _add_edge_cols(
+    event_df: pd.DataFrame, vertex_df: pd.DataFrame
+) -> pd.DataFrame:
     edge_out = _unpack(vertex_df, "out")
     edge_in = _unpack(vertex_df, "in")
     shower_df = event_df.join(edge_out)
@@ -139,14 +150,18 @@ class PythiaEvent(Generic[E], Sized):
     def _prop_map(self, prp: str) -> Iterable[Tuple[Any, ...]]:
         return map(op.methodcaller(prp), self._pcls)
 
-    def _extract_struc(self, schema: Dict[str, Tuple[str, npt.DTypeLike]]) -> AnyVector:
+    def _extract_struc(
+        self, schema: Dict[str, Tuple[str, npt.DTypeLike]]
+    ) -> AnyVector:
         dtype = np.dtype(list(schema.values()))
         return np.fromiter(zip(*map(self._prop_map, schema.keys())), dtype)
 
     @property
     def edges(self) -> AnyVector:
         edge_df = pd.DataFrame(
-            self._extract_struc({"index": ("index", "<i4"), "isFinal": ("final", "<?")})
+            self._extract_struc(
+                {"index": ("index", "<i4"), "isFinal": ("final", "<?")}
+            )
         )
         edge_df["parents"] = tuple(
             map(lambda x: tuple(sorted(x)), self._prop_map("motherList"))
