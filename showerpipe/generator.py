@@ -16,15 +16,12 @@ from pathlib import Path
 from typing import (
     Optional,
     Any,
-    TypeVar,
-    Generic,
     Iterable,
     Dict,
     Tuple,
     Union,
 )
 from collections import OrderedDict
-from collections.abc import Sized
 from dataclasses import dataclass
 import operator as op
 import random
@@ -37,15 +34,8 @@ import numpy.typing as npt
 import pandas as pd
 import pythia8 as _pythia8
 
-from showerpipe._base import GeneratorAdapter
+from showerpipe import base
 from showerpipe.lhe import count_events, source_adapter, _LHE_STORAGE
-
-
-BoolVector = npt.NDArray[np.bool_]
-IntVector = npt.NDArray[np.int32]
-HalfIntVector = npt.NDArray[np.int16]
-AnyVector = npt.NDArray[Any]
-E = TypeVar("E", bound=Iterable[Any])
 
 
 def _vertex_df(event_df: pd.DataFrame) -> pd.DataFrame:
@@ -99,7 +89,7 @@ def _add_edge_cols(
 
 
 @dataclass
-class PythiaEvent(Generic[E], Sized):
+class PythiaEvent(base.EventAdapter):
     """Interface wrapping the Pythia8 events, providing access to the
     event data via numpy arrays.
 
@@ -132,7 +122,7 @@ class PythiaEvent(Generic[E], Sized):
         Produces a new event with identical particle records.
     """
 
-    _event: E
+    _event: _pythia8.Event
 
     @cached_property
     def _pcls(self) -> Tuple[Any, ...]:
@@ -150,12 +140,12 @@ class PythiaEvent(Generic[E], Sized):
 
     def _extract_struc(
         self, schema: OrderedDict[str, Tuple[str, npt.DTypeLike]]
-    ) -> AnyVector:
+    ) -> base.AnyVector:
         dtype = np.dtype(list(schema.values()))
         return np.fromiter(zip(*map(self._prop_map, schema.keys())), dtype)
 
     @property
-    def edges(self) -> AnyVector:
+    def edges(self) -> base.AnyVector:
         edge_df = pd.DataFrame(
             self._extract_struc(
                 OrderedDict(
@@ -178,7 +168,7 @@ class PythiaEvent(Generic[E], Sized):
         )
 
     @property
-    def pmu(self) -> AnyVector:
+    def pmu(self) -> base.AnyVector:
         return self._extract_struc(
             OrderedDict(
                 {
@@ -191,7 +181,7 @@ class PythiaEvent(Generic[E], Sized):
         )
 
     @property
-    def color(self) -> AnyVector:
+    def color(self) -> base.AnyVector:
         return self._extract_struc(
             OrderedDict(
                 {
@@ -202,27 +192,27 @@ class PythiaEvent(Generic[E], Sized):
         )
 
     @property
-    def pdg(self) -> IntVector:
+    def pdg(self) -> base.IntVector:
         return np.fromiter(self._prop_map("id"), np.int32)
 
     @property
-    def final(self) -> BoolVector:
+    def final(self) -> base.BoolVector:
         return np.fromiter(self._prop_map("isFinal"), np.bool_)
 
     @property
-    def helicity(self) -> HalfIntVector:
+    def helicity(self) -> base.HalfIntVector:
         return np.fromiter(self._prop_map("pol"), np.int16)
 
     @property
-    def status(self) -> HalfIntVector:
+    def status(self) -> base.HalfIntVector:
         return np.fromiter(self._prop_map("status"), np.int16)
 
-    def copy(self) -> "PythiaEvent[E]":
+    def copy(self) -> "PythiaEvent":
         """Returns a copy of the event."""
         return self.__class__(_pythia8.Event(self._event))
 
 
-class PythiaGenerator(GeneratorAdapter):
+class PythiaGenerator(base.GeneratorAdapter):
     """Wrapper of Pythia8 generator. Provides an iterator over
     successive showered events in a PythiaEvent instance, whose
     properties expose the data via NumPy arrays.
@@ -251,9 +241,13 @@ class PythiaGenerator(GeneratorAdapter):
 
     Raises
     ------
-    AttributeError
-        If length of iterator is accessed, without a LHE file passed as
-        a parameter.
+    NotImplementedError
+        If length of iterator is accessed, without a LHE file passed
+        during initialisation.
+    ValueError
+        If ``rng_seed`` passed during initialisation is less than -1.
+    RuntimeError
+        If Pythia fails to initialise.
     """
 
     def __init__(
@@ -350,10 +344,11 @@ def repeat_hadronize(
         will produce an infinite iterator.
     copy : bool
         Whether to return copies of the events, orphaned from ``gen``,
-        the passed ``PythiaGenerator`` instance. Setting this to
-        ``False`` may improve speed and reduce memory, but will have a
-        side-effect on ``gen``, such that its internal current event
-        will be set to the most recent event yielded by this generator.
+        the passed ``PythiaGenerator`` instance.Setting this to
+        ``False`` may improve speed and reduce memory consumption, but
+        will have side-effects on ``gen``, such that its internal
+        current event will be set to the most recent event yielded by
+        this generator (until it terminates).
         Default is ``True``.
 
     Yields
