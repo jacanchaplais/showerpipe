@@ -33,6 +33,8 @@ import numpy.lib.recfunctions as rfn
 import numpy.typing as npt
 import pandas as pd
 import pythia8 as _pythia8
+from rich.tree import Tree
+from rich.console import Console
 
 from showerpipe import base
 from showerpipe.lhe import count_events, source_adapter, _LHE_STORAGE
@@ -134,6 +136,13 @@ class PythiaEvent(base.EventAdapter):
         if size > 0:
             size = size - 1
         return size
+
+    def __str__(self) -> str:
+        name = self.__class__.__name__
+        return f"{name}(len={len(self)})"
+
+    def __rich__(self) -> str:
+        return str(self)
 
     def _prop_map(self, prp: str) -> Iterable[Tuple[Any, ...]]:
         return map(op.methodcaller(prp), self._pcls)
@@ -290,6 +299,21 @@ class PythiaGenerator(base.GeneratorAdapter):
         self._pythia = pythia
         self._event = PythiaEvent(pythia.event)
         self._fresh_event = True
+
+    def __rich__(self) -> Tree:
+        name = self.__class__.__name__
+        tree = Tree(f"{name}(xml_dir=[yellow]'{self.xml_dir}'[default])")
+        for class_key, group in self.config.items():
+            class_tree = tree.add(f"[blue]{class_key}")
+            for name_key, value in group.items():
+                class_tree.add(f"[red]{name_key} [default]= [green]{value}")
+        return tree
+
+    def __repr__(self) -> str:
+        console = Console(color_system=None)
+        with console.capture() as capture:
+            console.print(self)
+        return capture.get()
 
     def __next__(self) -> PythiaEvent:
         if self._pythia is None:
