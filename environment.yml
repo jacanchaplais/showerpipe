@@ -10,3 +10,4 @@ dependencies:
   - numpy
   - pandas
   - pythia8
+  - rich=12.6.0
