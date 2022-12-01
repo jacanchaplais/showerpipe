@@ -13,14 +13,7 @@ import os
 import tempfile
 import shutil
 from pathlib import Path
-from typing import (
-    Optional,
-    Any,
-    Iterable,
-    Dict,
-    Tuple,
-    Union,
-)
+from typing import Optional, Any, Iterable, Dict, Tuple, Union
 from collections import OrderedDict
 from dataclasses import dataclass
 import operator as op
@@ -36,8 +29,10 @@ import pythia8 as _pythia8
 from rich.tree import Tree
 from rich.console import Console
 
-from showerpipe import base
-from showerpipe.lhe import count_events, source_adapter, _LHE_STORAGE
+from showerpipe import base, lhe
+
+
+__all__ = ["PythiaEvent", "PythiaGenerator", "repeat_hadronize"]
 
 
 def _vertex_df(event_df: pd.DataFrame) -> pd.DataFrame:
@@ -92,8 +87,10 @@ def _add_edge_cols(
 
 @dataclass
 class PythiaEvent(base.EventAdapter):
-    """Interface wrapping the Pythia8 events, providing access to the
-    event data via numpy arrays.
+    """Interface wrapping Pythia8 events, providing access to the event
+    data via NumPy arrays.
+
+    :group: Pythia
 
     Attributes
     ----------
@@ -226,6 +223,8 @@ class PythiaGenerator(base.GeneratorAdapter):
     successive showered events in a PythiaEvent instance, whose
     properties expose the data via NumPy arrays.
 
+    :group: Pythia
+
     Parameters
     ----------
     config_file : pathlib.Path | str
@@ -262,7 +261,7 @@ class PythiaGenerator(base.GeneratorAdapter):
     def __init__(
         self,
         config_file: Union[str, Path],
-        lhe_file: Optional[_LHE_STORAGE] = None,
+        lhe_file: Optional[lhe._LHE_STORAGE] = None,
         rng_seed: Optional[int] = -1,
     ) -> None:
         if rng_seed is None:
@@ -283,8 +282,8 @@ class PythiaGenerator(base.GeneratorAdapter):
                 config.setdefault(sup_key, dict())
                 config[sup_key][sub_key] = val.strip()
         if lhe_file is not None:
-            self._num_events = count_events(lhe_file)
-            with source_adapter(lhe_file) as f:
+            self._num_events = lhe.count_events(lhe_file)
+            with lhe.source_adapter(lhe_file) as f:
                 self.temp_lhe_file = tempfile.NamedTemporaryFile()
                 shutil.copyfileobj(f, self.temp_lhe_file)
                 self.temp_lhe_file.seek(0)
@@ -356,6 +355,8 @@ def repeat_hadronize(
 ) -> Iterable[PythiaEvent]:
     """Takes a PythiaGenerator instance with an unhadronised event
     already generated, and repeatedly hadronises the current event.
+
+    :group: Pythia
 
     Parameters
     ----------

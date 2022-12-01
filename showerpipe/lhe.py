@@ -6,9 +6,8 @@ The ShowerPipe Les Houches functions utilise xml parsing techniques to
 redistribute and repeat hard events, outputting valid lhe files.
 """
 
-from typing import Union, BinaryIO, Iterator
+from typing import Union, BinaryIO, Iterator, Optional
 import io
-import os
 import re
 import gzip
 import requests  # type: ignore
@@ -21,7 +20,12 @@ from xml.sax.saxutils import unescape
 from urllib.parse import urlparse
 
 from lxml import etree  # type: ignore
+from lxml.etree import ElementBase
 
+
+__all__ = ["source_adapter", "load_lhe", "count_events", "split", "LheData"]
+
+_LHE_STORAGE = Union[Path, str, bytes]
 
 _parse_kwargs = dict(
     resolve_entities=False,
@@ -30,13 +34,12 @@ _parse_kwargs = dict(
 )
 
 
-_LHE_STORAGE = Union[Path, str, bytes]
-
-
 @contextmanager
 def source_adapter(source: _LHE_STORAGE) -> Iterator[BinaryIO]:
     """Context manager to provide a consistent adapter interface for LHE
     data stored in various formats.
+
+    :group: LesHouches
 
     Parameters
     ----------
@@ -53,28 +56,27 @@ def source_adapter(source: _LHE_STORAGE) -> Iterator[BinaryIO]:
     """
     is_bytes = isinstance(source, bytes)
     is_str = isinstance(source, str)
-    is_path = os.path.exists(source)
+    is_path = isinstance(source, Path) and source.exists()
     is_url = False
     if is_str:
         is_url = bool(urlparse(source).netloc)  # type: ignore
-
     if is_path:  # provide a file-object referring to the actual file
         path = Path(source)  # type: ignore
+        with open(path, "r") as lhe_filecheck:
+            lhe_filecheck.read(1)
+        lhe_file = open(path, "rb")
         try:
-            with open(path, "r") as lhe_filecheck:
-                lhe_filecheck.read(1)
-            lhe_file = open(path, "rb")
             yield lhe_file
         except UnicodeDecodeError:
             lhe_file = gzip.open(path, "rb")  # type: ignore
             lhe_file.read(1)
             lhe_file.seek(0)
-            yield lhe_file
+            yield lhe_file  # type: ignore
         finally:
             lhe_file.close()
     elif is_str or is_bytes or is_url:  # create a BytesIO file-object
         if is_url:
-            lhe_request = requests.get(source)
+            lhe_request = requests.get(source)  # type: ignore
             lhe_content = lhe_request.content
             try:
                 xml_bytes = gzip.decompress(lhe_content)
@@ -84,8 +86,8 @@ def source_adapter(source: _LHE_STORAGE) -> Iterator[BinaryIO]:
             xml_bytes = source.encode()
         elif is_bytes:
             xml_bytes = source
+        out_io = io.BytesIO(xml_bytes)
         try:
-            out_io = io.BytesIO(xml_bytes)
             yield out_io
         finally:
             out_io.close()
@@ -93,8 +95,11 @@ def source_adapter(source: _LHE_STORAGE) -> Iterator[BinaryIO]:
         raise NotImplementedError
 
 
-def load_lhe(path: str) -> bytes:
-    """Load Les Houches file into a bytestring object."""
+def load_lhe(path: Union[Path, str]) -> bytes:
+    """Load Les Houches file into a bytestring object.
+
+    :group: LesHouches
+    """
     parser = etree.XMLParser(**_parse_kwargs)
     with source_adapter(path) as file_in:
         tree = etree.parse(file_in, parser=parser)
@@ -103,17 +108,17 @@ def load_lhe(path: str) -> bytes:
     return content
 
 
-def _get_mg_info(header_element):
+def _get_mg_info(header_element: ElementBase) -> ElementBase:
     return header_element.find("MGGenerationInfo")
 
 
-def _read_num_events(mg_info) -> int:
+def _read_num_events(mg_info: ElementBase) -> int:
     re_num = re.findall("\d+", mg_info.text)
     num_events = int(re_num[0])
     return num_events
 
 
-def _update_num_events(mg_info, new_num: int):
+def _update_num_events(mg_info: ElementBase, new_num: int) -> ElementBase:
     mg_info = deepcopy(mg_info)
     prev_num = _read_num_events(mg_info)
     mg_info_list = mg_info.text.split("\n")
@@ -123,6 +128,20 @@ def _update_num_events(mg_info, new_num: int):
 
 
 def count_events(source: _LHE_STORAGE) -> int:
+    """Returns the number of LHE events stored in ``source``.
+
+    :group: LesHouches
+
+    Parameters
+    ----------
+    source : pathlib.Path | str | bytes
+        File or string object containing Les Houches data.
+
+    Returns
+    -------
+    count : int
+        The number of LHE events.
+    """
     with source_adapter(source) as xml_source:
         event_parser = etree.iterparse(
             source=xml_source, tag=("event",), **_parse_kwargs
@@ -138,6 +157,8 @@ def split(source: _LHE_STORAGE, stride: int):
     """Generator, splitting LHE file content into separate bytestrings
     representing LHE files, with maximum number of events per bytestring
     equal to stride.
+
+    :group: LesHouches
 
     Parameters
     ----------
@@ -215,30 +236,51 @@ def _root_to_bytes(root):
 
 
 class LheData:
-    """Container for the Les Houches file content."""
+    """Container for the Les Houches file content.
+
+    :group: LesHouches
+
+    Attributes
+    ----------
+    content : bytes
+        Bytestring containing the text of the stored file.
+    num_events : int
+        Number of events stored.
+
+    Methods
+    -------
+    repeat(repeats, inplace)
+        Returns bytes content, with additional events by repetition.
+    tile(repeats, inplace)
+        Returns bytes content, with additional events by tiling.
+    """
 
     def __init__(self, content: bytes):
-        self.__root = etree.fromstring(content)
+        self._root: ElementBase = etree.fromstring(content)
+
+    @classmethod
+    def from_path(cls, path: Union[str, Path]) -> "LheData":
+        return cls(etree.fromstring(load_lhe(path)))
 
     @property
     def content(self) -> bytes:
         """The LHE file contents in bytes."""
-        return _root_to_bytes(self.__root)
+        return _root_to_bytes(self._root)
 
     @content.setter
     def content(self, data):
         del self.num_events
-        self.__root = etree.fromstring(data)
+        self._root = etree.fromstring(data)
 
     @cached_property
     def num_events(self):
-        return len(self.__root.findall("event"))
+        return len(self._root.findall("event"))
 
     @property
-    def __event_iter(self):
-        return self.__root.iter("event")
+    def _event_iter(self):
+        return self._root.iter("event")
 
-    def repeat(self, repeats: int, inplace: bool = False) -> bytes:
+    def repeat(self, repeats: int, inplace: bool = False) -> Optional[bytes]:
         """Modifies LHE content, repeating each event the number of
         times given by repeats.
 
@@ -262,11 +304,11 @@ class LheData:
         the content explicitly to bytestring output, but may lead to
         unexpected side effects. Should be used with caution.
         """
-        return self.__event_duplicator(
-            repeats, inplace, dup_strat=self.__repeat_order
+        return self._event_duplicator(
+            repeats, inplace, dup_strat=self._repeat_order
         )
 
-    def tile(self, repeats: int, inplace: bool = False) -> bytes:
+    def tile(self, repeats: int, inplace: bool = False) -> Optional[bytes]:
         """Modifies LHE content, tile repeating all events the
         number of times given by repeats.
 
@@ -290,36 +332,38 @@ class LheData:
         the content explicitly to bytestring output, but may lead to
         unexpected side effects. Should be used with caution.
         """
-        return self.__event_duplicator(
-            repeats, inplace, dup_strat=self.__tile_order
+        return self._event_duplicator(
+            repeats, inplace, dup_strat=self._tile_order
         )
 
-    def __tile_order(self, x):
+    def _tile_order(self, x):
         return x
 
-    def __repeat_order(self, x):
+    def _repeat_order(self, x):
         return zip(*x)
 
-    def __build_root(self, event_iter):
-        root = deepcopy(self.__root)
+    def _build_root(self, event_iter):
+        root = deepcopy(self._root)
         for event in root.findall("event"):
             root.remove(event)
         for event in event_iter:
             root.append(event)
         return root
 
-    def __event_duplicator(self, repeats: int, inplace: bool, dup_strat):
-        tiled_lists = (self.__event_iter for i in range(repeats))
+    def _event_duplicator(
+        self, repeats: int, inplace: bool, dup_strat
+    ) -> Optional[bytes]:
+        tiled_lists = (self._event_iter for _ in range(repeats))
         dup_events = chain.from_iterable(dup_strat(tiled_lists))
         dup_event_copies = map(deepcopy, dup_events)
-        root = self.__build_root(dup_event_copies)
+        root = self._build_root(dup_event_copies)
         header = root[0]
         mg_info = _get_mg_info(header_element=header)
         prev_num = self.num_events
         new_num = prev_num * repeats
         header.replace(mg_info, _update_num_events(mg_info, new_num))
         if inplace is True:
-            self.__root = root
+            self._root = root
             if self.num_events is not None:
                 del self.num_events
             return None

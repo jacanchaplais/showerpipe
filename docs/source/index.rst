@@ -1,25 +1,22 @@
-.. showerpipe documentation master file, created by
-   sphinx-quickstart on Mon Jan 10 16:49:32 2022.
+.. heparchy documentation master file, created by
+   sphinx-quickstart on Thu Jan 13 12:21:01 2022.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
 Welcome to showerpipe's documentation!
-======================================
+====================================
 
-This documentation is under construction, and will have full coverage of
-showerpipe's features with the release of version 0.1.0.
+.. mdinclude:: ../../README.md
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+   :caption: API Reference
+   :hidden:
 
-   usage/installation
-   usage/quickstart
-
+   api.rst
 
 
-Indices and tables
-==================
+Index
+=====
 
 * :ref:`genindex`
 * :ref:`modindex`
