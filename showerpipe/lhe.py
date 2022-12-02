@@ -56,16 +56,16 @@ def source_adapter(source: _LHE_STORAGE) -> Iterator[BinaryIO]:
     """
     is_bytes = isinstance(source, bytes)
     is_str = isinstance(source, str)
-    is_path = isinstance(source, Path) and source.exists()
+    is_path = (is_str or isinstance(source, Path)) and Path(source).exists()
     is_url = False
     if is_str:
         is_url = bool(urlparse(source).netloc)  # type: ignore
     if is_path:  # provide a file-object referring to the actual file
         path = Path(source)  # type: ignore
-        with open(path, "r") as lhe_filecheck:
-            lhe_filecheck.read(1)
-        lhe_file = open(path, "rb")
         try:
+            with open(path, "r") as lhe_filecheck:
+                lhe_filecheck.read(1)
+            lhe_file = open(path, "rb")
             yield lhe_file
         except UnicodeDecodeError:
             lhe_file = gzip.open(path, "rb")  # type: ignore
@@ -73,7 +73,7 @@ def source_adapter(source: _LHE_STORAGE) -> Iterator[BinaryIO]:
             lhe_file.seek(0)
             yield lhe_file  # type: ignore
         finally:
-            lhe_file.close()
+            lhe_file.close()  # type: ignore
     elif is_str or is_bytes or is_url:  # create a BytesIO file-object
         if is_url:
             lhe_request = requests.get(source)  # type: ignore
