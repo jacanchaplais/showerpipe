@@ -5,6 +5,8 @@
 Provides adapter and facade interfaces for high energy physics collision
 event generation programs for Pythonic usage, and exposing the data via
 NumPy arrays.
+
+Dummy change to test CI/CD.
 """
 from ._version import __version__
 from . import generator
