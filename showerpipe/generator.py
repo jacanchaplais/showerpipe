@@ -279,6 +279,8 @@ class PythiaGenerator(base.GeneratorAdapter):
             for line in f:
                 key, val = line.partition("=")[::2]
                 sup_key, sub_key = map(lambda s: s.strip(), key.split(":"))
+                if sup_key.startswith("#"):
+                    continue
                 config.setdefault(sup_key, dict())
                 config[sup_key][sub_key] = val.strip()
         if lhe_file is not None:
