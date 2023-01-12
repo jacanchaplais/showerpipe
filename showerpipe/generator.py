@@ -20,6 +20,7 @@ import operator as op
 import random
 from functools import cached_property
 from copy import deepcopy
+import warnings
 
 import numpy as np
 import numpy.lib.recfunctions as rfn
@@ -234,6 +235,9 @@ class PythiaGenerator(base.GeneratorAdapter):
         string, or bytes object. If file, may be compressed with gzip.
     rng_seed : int
         Seed passed to the random number generator used by Pythia.
+    quiet : bool
+        Whether to quieten ``pythia8`` during data generation. Default
+        is ``True``.
 
     Attributes
     ----------
@@ -263,6 +267,7 @@ class PythiaGenerator(base.GeneratorAdapter):
         config_file: Union[str, Path],
         lhe_file: Optional[lhe._LHE_STORAGE] = None,
         rng_seed: Optional[int] = -1,
+        quiet: bool = True,
     ) -> None:
         if rng_seed is None:
             rng_seed = random.randint(1, 900_000_000)
@@ -271,7 +276,7 @@ class PythiaGenerator(base.GeneratorAdapter):
         xml_dir = os.environ["PYTHIA8DATA"]
         pythia = _pythia8.Pythia(xmlDir=xml_dir, printBanner=False)
         config: Dict[str, Dict[str, str]] = {
-            "Print": {"quiet": "on"},
+            "Print": {"quiet": "on" if quiet else "off"},
             "Random": {"setSeed": "on", "seed": str(rng_seed)},
             "Beams": {"frameType": "4"},
         }
@@ -397,6 +402,9 @@ def repeat_hadronize(
     ValueError
         If the cmnd file used to initialise ``gen`` does not set
         'HadronLevel:all = off'. See notes for more information.
+    UserWarning
+        If Pythia fails to perform the hadronization process for a given
+        event, this iterator will be empty.
 
     Notes
     -----
@@ -447,7 +455,13 @@ def repeat_hadronize(
     while (reps is None) or (i < reps):
         if gen._fresh_event is True:  # stop if entirely new event generated
             break
-        gen._pythia.forceHadronLevel()
+        success: bool = gen._pythia.forceHadronLevel()
+        if success is False:
+            gen.overwrite_event(event_copy)
+            warnings.warn(
+                "Pythia cannot hadronize event. Iterator empty.", UserWarning
+            )
+            break
         event_out = gen._event
         if copy is True:
             event_out = event_out.copy()
