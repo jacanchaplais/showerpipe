@@ -1,5 +1,6 @@
 # showerpipe
 
+![Tests](https://github.com/jacanchaplais/showerpipe/actions/workflows/tests.yml/badge.svg)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 Provides a Pythonic data pipeline for showering and hadronisation programs in
