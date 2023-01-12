@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Conda environment from environment.yml
+        uses: mamba-org/provision-with-micromamba@main
+        with:
+          micromamba-version: "1.1.0"
+          cache-env: true
+          extra-specs: |
+            python=3.10
+            tox=3.24.3
+            pytest=6.2.5
+            pytest-cov=2.12.1
+            hypothesis=6.62.0
+
+      # Linux and macOS
+      - name: Run tests
+        shell: bash -l {0}
+        run: pytest
