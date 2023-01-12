@@ -23,6 +23,7 @@ jobs:
 
       # Linux and macOS
       - name: Run tests
+        shell: bash -l {0}
         run: |
           pip install .
           pytest
