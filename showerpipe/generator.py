@@ -10,16 +10,17 @@ Data is generated using Python iterator objects, and provided in NumPy
 arrays.
 """
 import os
-import tempfile
+import tempfile as tf
 import shutil
 from pathlib import Path
-from typing import Optional, Any, Iterable, Dict, Tuple, Union
+import typing as ty
 from collections import OrderedDict
 from dataclasses import dataclass
 import operator as op
 import random
 from functools import cached_property
 from copy import deepcopy
+import warnings
 
 import numpy as np
 import numpy.lib.recfunctions as rfn
@@ -124,7 +125,7 @@ class PythiaEvent(base.EventAdapter):
     _event: _pythia8.Event
 
     @cached_property
-    def _pcls(self) -> Tuple[Any, ...]:
+    def _pcls(self) -> ty.Tuple[ty.Any, ...]:
         return tuple(filter(lambda pcl: pcl.id() != 90, self._event))
 
     def __len__(self) -> int:
@@ -141,11 +142,11 @@ class PythiaEvent(base.EventAdapter):
     def __rich__(self) -> str:
         return str(self)
 
-    def _prop_map(self, prp: str) -> Iterable[Tuple[Any, ...]]:
+    def _prop_map(self, prp: str) -> ty.Iterable[ty.Tuple[ty.Any, ...]]:
         return map(op.methodcaller(prp), self._pcls)
 
     def _extract_struc(
-        self, schema: OrderedDict[str, Tuple[str, npt.DTypeLike]]
+        self, schema: ty.OrderedDict[str, ty.Tuple[str, npt.DTypeLike]]
     ) -> base.AnyVector:
         dtype = np.dtype(list(schema.values()))
         return np.fromiter(zip(*map(self._prop_map, schema.keys())), dtype)
@@ -234,6 +235,9 @@ class PythiaGenerator(base.GeneratorAdapter):
         string, or bytes object. If file, may be compressed with gzip.
     rng_seed : int
         Seed passed to the random number generator used by Pythia.
+    quiet : bool
+        Whether to quieten ``pythia8`` during data generation. Default
+        is ``True``.
 
     Attributes
     ----------
@@ -260,9 +264,10 @@ class PythiaGenerator(base.GeneratorAdapter):
 
     def __init__(
         self,
-        config_file: Union[str, Path],
-        lhe_file: Optional[lhe._LHE_STORAGE] = None,
-        rng_seed: Optional[int] = -1,
+        config_file: ty.Union[str, Path],
+        lhe_file: ty.Optional[lhe._LHE_STORAGE] = None,
+        rng_seed: ty.Optional[int] = -1,
+        quiet: bool = True,
     ) -> None:
         if rng_seed is None:
             rng_seed = random.randint(1, 900_000_000)
@@ -270,8 +275,8 @@ class PythiaGenerator(base.GeneratorAdapter):
             raise ValueError("rng_seed must be between -1 and 900_000_000.")
         xml_dir = os.environ["PYTHIA8DATA"]
         pythia = _pythia8.Pythia(xmlDir=xml_dir, printBanner=False)
-        config: Dict[str, Dict[str, str]] = {
-            "Print": {"quiet": "on"},
+        config: ty.Dict[str, ty.Dict[str, str]] = {
+            "Print": {"quiet": "on" if quiet else "off"},
             "Random": {"setSeed": "on", "seed": str(rng_seed)},
             "Beams": {"frameType": "4"},
         }
@@ -286,7 +291,7 @@ class PythiaGenerator(base.GeneratorAdapter):
         if lhe_file is not None:
             self._num_events = lhe.count_events(lhe_file)
             with lhe.source_adapter(lhe_file) as f:
-                self.temp_lhe_file = tempfile.NamedTemporaryFile()
+                self.temp_lhe_file = tf.NamedTemporaryFile()
                 shutil.copyfileobj(f, self.temp_lhe_file)
                 self.temp_lhe_file.seek(0)
                 me_path = self.temp_lhe_file.name
@@ -353,8 +358,8 @@ class PythiaGenerator(base.GeneratorAdapter):
 
 
 def repeat_hadronize(
-    gen: PythiaGenerator, reps: Optional[int] = None, copy: bool = True
-) -> Iterable[PythiaEvent]:
+    gen: PythiaGenerator, reps: ty.Optional[int] = None, copy: bool = True
+) -> ty.Generator[PythiaEvent, None, None]:
     """Takes a PythiaGenerator instance with an unhadronised event
     already generated, and repeatedly hadronises the current event.
 
@@ -397,6 +402,9 @@ def repeat_hadronize(
     ValueError
         If the cmnd file used to initialise ``gen`` does not set
         'HadronLevel:all = off'. See notes for more information.
+    UserWarning
+        If Pythia fails to perform the hadronization process for a given
+        event, this iterator will be empty.
 
     Notes
     -----
@@ -425,7 +433,9 @@ def repeat_hadronize(
     if hadron_key not in conf_copy:
         hadron_level = "on"
     else:
-        hadron_level = conf_copy[hadron_key].pop("all", "on")
+        hadron_level = conf_copy[hadron_key].pop("all", None)
+        if hadron_level is None:
+            hadron_level = conf_copy[hadron_key].pop("Hadronize", "on")
         if len(conf_copy[hadron_key]) > 0:
             raise KeyError(
                 f"Conflicting settings for {hadron_key} provided, "
@@ -447,7 +457,13 @@ def repeat_hadronize(
     while (reps is None) or (i < reps):
         if gen._fresh_event is True:  # stop if entirely new event generated
             break
-        gen._pythia.forceHadronLevel()
+        success: bool = gen._pythia.forceHadronLevel()
+        if success is False:
+            gen.overwrite_event(event_copy)
+            warnings.warn(
+                "Pythia cannot hadronize event. Iterator empty.", UserWarning
+            )
+            break
         event_out = gen._event
         if copy is True:
             event_out = event_out.copy()
