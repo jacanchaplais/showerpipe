@@ -359,7 +359,7 @@ class PythiaGenerator(base.GeneratorAdapter):
 
 def repeat_hadronize(
     gen: PythiaGenerator, reps: ty.Optional[int] = None, copy: bool = True
-) -> ty.Iterable[PythiaEvent]:
+) -> ty.Generator[PythiaEvent, None, None]:
     """Takes a PythiaGenerator instance with an unhadronised event
     already generated, and repeatedly hadronises the current event.
 
@@ -433,7 +433,9 @@ def repeat_hadronize(
     if hadron_key not in conf_copy:
         hadron_level = "on"
     else:
-        hadron_level = conf_copy[hadron_key].pop("all", "on")
+        hadron_level = conf_copy[hadron_key].pop("all", None)
+        if hadron_level is None:
+            hadron_level = conf_copy[hadron_key].pop("Hadronize", "on")
         if len(conf_copy[hadron_key]) > 0:
             raise KeyError(
                 f"Conflicting settings for {hadron_key} provided, "

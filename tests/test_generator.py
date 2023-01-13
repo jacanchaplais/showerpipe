@@ -4,7 +4,9 @@ from pathlib import Path
 import operator as op
 import itertools as it
 import typing as ty
+import shutil
 
+import pytest
 from hypothesis import given, settings, strategies as st
 import numpy as np
 import numpy.lib.recfunctions as rfn
@@ -111,6 +113,56 @@ def hadron_repeater(
     gen = draw(generators(min_seed, max_seed, hadron=False))
     _ = next(gen)
     return shp.generator.repeat_hadronize(gen, reps=reps)
+
+
+@given(gen=generators(hadron=True))
+@settings(max_examples=1, deadline=None)
+def test_rep_hadron_conf_valerr(gen: shp.generator.PythiaGenerator) -> None:
+    """Tests if ``ValueError`` is raised for incorrect config."""
+    _ = next(gen)
+    with pytest.raises(ValueError):
+        hadron_gen = shp.generator.repeat_hadronize(gen, 10, False)
+        _ = next(hadron_gen)
+
+
+def test_rep_hadron_conf_keyerr() -> None:
+    """Tests if ``KeyError`` is raised for incorrect config."""
+    with ctx.ExitStack() as stack:
+        stack.enter_context(pytest.raises(KeyError))
+        conf = stack.enter_context(tf.NamedTemporaryFile("wb"))
+        prelim_path = stack.enter_context(config_file())
+        prelim_conf = stack.enter_context(open(prelim_path, "rb"))
+        shutil.copyfileobj(prelim_conf, conf)
+        conf.write(b"HadronLevel:all = off")
+        conf.seek(0)
+        gen = shp.generator.PythiaGenerator(conf.name, DATA_PATH)
+        _ = next(gen)
+        hadron_gen = shp.generator.repeat_hadronize(gen, 10, False)
+        _ = next(hadron_gen)
+
+
+@given(gen=generators(hadron=False))
+@settings(max_examples=1, deadline=None)
+def test_rep_hadron_conf_runerr(gen: shp.generator.PythiaGenerator) -> None:
+    """Tests if ``RuntimeError`` is raised for instantiating without
+    existing event."""
+    with pytest.raises(RuntimeError):
+        hadron_gen = shp.generator.repeat_hadronize(gen, 10, False)
+        _ = next(hadron_gen)
+
+
+@given(gen=generators(hadron=False))
+@settings(max_examples=1, deadline=None)
+def test_rep_hadron_conf_stopit(gen: shp.generator.PythiaGenerator) -> None:
+    """Tests if ``StopIteration`` is raised for iterating the
+    ``PythiaGenerator`` before between iterations of the repeat
+    hadronization."""
+    _ = next(gen)
+    with pytest.raises(StopIteration):
+        hadron_gen = shp.generator.repeat_hadronize(gen, 10, False)
+        _ = next(hadron_gen)
+        _ = next(gen)
+        _ = next(hadron_gen)
 
 
 @given(gen=hadron_repeater())
