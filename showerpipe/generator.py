@@ -10,10 +10,10 @@ Data is generated using Python iterator objects, and provided in NumPy
 arrays.
 """
 import os
-import tempfile
+import tempfile as tf
 import shutil
 from pathlib import Path
-from typing import Optional, Any, Iterable, Dict, Tuple, Union
+import typing as ty
 from collections import OrderedDict
 from dataclasses import dataclass
 import operator as op
@@ -125,7 +125,7 @@ class PythiaEvent(base.EventAdapter):
     _event: _pythia8.Event
 
     @cached_property
-    def _pcls(self) -> Tuple[Any, ...]:
+    def _pcls(self) -> ty.Tuple[ty.Any, ...]:
         return tuple(filter(lambda pcl: pcl.id() != 90, self._event))
 
     def __len__(self) -> int:
@@ -142,11 +142,11 @@ class PythiaEvent(base.EventAdapter):
     def __rich__(self) -> str:
         return str(self)
 
-    def _prop_map(self, prp: str) -> Iterable[Tuple[Any, ...]]:
+    def _prop_map(self, prp: str) -> ty.Iterable[ty.Tuple[ty.Any, ...]]:
         return map(op.methodcaller(prp), self._pcls)
 
     def _extract_struc(
-        self, schema: OrderedDict[str, Tuple[str, npt.DTypeLike]]
+        self, schema: ty.OrderedDict[str, ty.Tuple[str, npt.DTypeLike]]
     ) -> base.AnyVector:
         dtype = np.dtype(list(schema.values()))
         return np.fromiter(zip(*map(self._prop_map, schema.keys())), dtype)
@@ -264,9 +264,9 @@ class PythiaGenerator(base.GeneratorAdapter):
 
     def __init__(
         self,
-        config_file: Union[str, Path],
-        lhe_file: Optional[lhe._LHE_STORAGE] = None,
-        rng_seed: Optional[int] = -1,
+        config_file: ty.Union[str, Path],
+        lhe_file: ty.Optional[lhe._LHE_STORAGE] = None,
+        rng_seed: ty.Optional[int] = -1,
         quiet: bool = True,
     ) -> None:
         if rng_seed is None:
@@ -275,7 +275,7 @@ class PythiaGenerator(base.GeneratorAdapter):
             raise ValueError("rng_seed must be between -1 and 900_000_000.")
         xml_dir = os.environ["PYTHIA8DATA"]
         pythia = _pythia8.Pythia(xmlDir=xml_dir, printBanner=False)
-        config: Dict[str, Dict[str, str]] = {
+        config: ty.Dict[str, ty.Dict[str, str]] = {
             "Print": {"quiet": "on" if quiet else "off"},
             "Random": {"setSeed": "on", "seed": str(rng_seed)},
             "Beams": {"frameType": "4"},
@@ -291,7 +291,7 @@ class PythiaGenerator(base.GeneratorAdapter):
         if lhe_file is not None:
             self._num_events = lhe.count_events(lhe_file)
             with lhe.source_adapter(lhe_file) as f:
-                self.temp_lhe_file = tempfile.NamedTemporaryFile()
+                self.temp_lhe_file = tf.NamedTemporaryFile()
                 shutil.copyfileobj(f, self.temp_lhe_file)
                 self.temp_lhe_file.seek(0)
                 me_path = self.temp_lhe_file.name
@@ -358,8 +358,8 @@ class PythiaGenerator(base.GeneratorAdapter):
 
 
 def repeat_hadronize(
-    gen: PythiaGenerator, reps: Optional[int] = None, copy: bool = True
-) -> Iterable[PythiaEvent]:
+    gen: PythiaGenerator, reps: ty.Optional[int] = None, copy: bool = True
+) -> ty.Iterable[PythiaEvent]:
     """Takes a PythiaGenerator instance with an unhadronised event
     already generated, and repeatedly hadronises the current event.
 
