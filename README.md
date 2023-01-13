@@ -1,5 +1,7 @@
 # showerpipe
 
+[![PyPI version](https://img.shields.io/pypi/v/showerpipe.svg)](https://pypi.org/project/showerpipe/)
+[![Documentation](https://readthedocs.org/projects/showerpipe/badge/?version=latest)](https://showerpipe.readthedocs.io)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 Provides a Pythonic data pipeline for showering and hadronisation programs in
