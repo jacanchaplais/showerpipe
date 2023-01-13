@@ -117,25 +117,21 @@ def hadron_repeater(
 @settings(max_examples=20, deadline=None)
 def test_rep_hadron_uniq(gen: ty.Iterable[shp.generator.PythiaEvent]) -> None:
     """Tests if the events following repeated hadronization are unique."""
-    duplicate = False
     data = sorted(map(op.attrgetter("pdg"), gen), key=len)
     for _, data_arrays in it.groupby(data, len):
         data_pairs = it.combinations(data_arrays, 2)
-        if any(map(lambda p: np.array_equal(*p), data_pairs)):
-            duplicate = True
-    assert duplicate is False
+        assert any(it.starmap(np.array_equal, data_pairs)) is False
 
 
 def rep_hadron_colorless(gen: ty.Iterable[shp.generator.PythiaEvent]) -> bool:
     """Given a rehadronization generator, return ``False`` if colored
     particles make it to the final state.
     """
-    all_colorless = True
     for event in gen:
         final_colors = rfn.structured_to_unstructured(event.color[event.final])
         if not np.all(final_colors == 0):
-            all_colorless = False
-    return all_colorless
+            return False
+    return True
 
 
 @given(gen=generators(hadron=False))
@@ -144,9 +140,6 @@ def test_rep_hadron_colorless(gen: shp.generator.PythiaGenerator) -> None:
     """Tests if colored particles make it to final state after
     rehadronization. Repeats for successive hard events.
     """
-    all_colorless = True
     for _ in it.islice(gen, 50):
         hadron_gen = shp.generator.repeat_hadronize(gen, 10, False)
-        if not rep_hadron_colorless(hadron_gen):
-            all_colorless = False
-    assert all_colorless is True
+        assert rep_hadron_colorless(hadron_gen) is True
