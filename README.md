@@ -3,6 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/showerpipe.svg)](https://pypi.org/project/showerpipe/)
 ![Tests](https://github.com/jacanchaplais/showerpipe/actions/workflows/tests.yml/badge.svg)
 [![Documentation](https://readthedocs.org/projects/showerpipe/badge/?version=latest)](https://showerpipe.readthedocs.io)
+[![License](https://img.shields.io/pypi/l/showerpipe)](https://raw.githubusercontent.com/jacanchaplais/showerpipe/main/LICENSE.txt)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 Provides a Pythonic data pipeline for showering and hadronisation programs in
