@@ -14,12 +14,15 @@ import tempfile
 import shutil
 from pathlib import Path
 from typing import Optional, Any, Iterable, Dict, Tuple, Union
+import typing as ty
+import collections as cl
 from collections import OrderedDict
 from dataclasses import dataclass
 import operator as op
 import random
 from functools import cached_property
 from copy import deepcopy
+import itertools as it
 
 import numpy as np
 import numpy.lib.recfunctions as rfn
@@ -33,56 +36,6 @@ from showerpipe import base, lhe
 
 
 __all__ = ["PythiaEvent", "PythiaGenerator", "repeat_hadronize"]
-
-
-def _vertex_df(event_df: pd.DataFrame) -> pd.DataFrame:
-    vertex_df = event_df.reset_index()
-    vertex_df = vertex_df.pivot_table(
-        index="parents",
-        values=["index"],
-        aggfunc=lambda x: tuple(x.to_list()),  # type: ignore
-    )
-    vertex_df = vertex_df.reset_index()
-    vertex_df = vertex_df.rename(columns={"parents": "in", "index": "out"})
-    vertex_df.index.name = "id"
-    return vertex_df
-
-
-def _unpack(vtx_df: pd.DataFrame, direction: str) -> pd.DataFrame:
-    vtx_col: pd.DataFrame = vtx_df[direction].reset_index()  # type: ignore
-    vtx_col = vtx_col.explode(direction)
-    vtx_col = vtx_col.set_index(direction)  # type: ignore
-    vertex_to_edge = {"in": "out", "out": "in"}
-    vtx_col.index.name = "index"
-    vtx_col = vtx_col.rename(columns={"id": vertex_to_edge[direction]})
-    return vtx_col
-
-
-def _add_edge_cols(
-    event_df: pd.DataFrame, vertex_df: pd.DataFrame
-) -> pd.DataFrame:
-    edge_out = _unpack(vertex_df, "out")
-    edge_in = _unpack(vertex_df, "in")
-    shower_df = event_df.join(edge_out)
-    shower_df = shower_df.join(edge_in)
-    edge_df = shower_df[["in", "out"]]
-    if edge_df is None:
-        raise ValueError
-    if shower_df is None:
-        raise ValueError
-    max_id = edge_df.stack().max()
-    isna: pd.Series = shower_df["out"].isna()  # type: ignore
-    final: pd.Series = shower_df["final"]  # type: ignore
-    num_final = np.sum(final)
-    final_ids = -1 * np.arange(max_id + 1, max_id + num_final + 1)
-    if not shower_df[isna]["final"].all():  # type: ignore
-        raise RuntimeError(
-            "Failed to add edges! Some outgoing vertices are not defined. "
-            "Please report this to maintainers."
-        )
-    shower_df.loc[(final, "out")] = final_ids
-    shower_df["out"] = shower_df["out"].astype("<i4")  # type: ignore
-    return shower_df
 
 
 @dataclass
@@ -148,30 +101,46 @@ class PythiaEvent(base.EventAdapter):
         self, schema: OrderedDict[str, Tuple[str, npt.DTypeLike]]
     ) -> base.AnyVector:
         dtype = np.dtype(list(schema.values()))
-        return np.fromiter(zip(*map(self._prop_map, schema.keys())), dtype)
+        return np.fromiter(
+            zip(*map(self._prop_map, schema.keys())), dtype, count=len(self)
+        )
 
     @property
     def edges(self) -> base.AnyVector:
-        edge_df = pd.DataFrame(
-            self._extract_struc(
-                OrderedDict(
-                    {"index": ("index", "<i4"), "isFinal": ("final", "<?")}
-                )
-            )
+        """Describes the heritage of the particle set as a DAG,
+        formatted as a COO adjacency list.
+        """
+        pcls = self._pcls
+        parents = tuple(map(op.methodcaller("index"), pcls))
+        children_groups = it.starmap(
+            lambda i, x: tuple(x) if x else (-i,),
+            enumerate(map(op.methodcaller("daughterList"), pcls), start=1),
         )
-        edge_df["parents"] = tuple(
-            map(lambda x: tuple(sorted(x)), self._prop_map("motherList"))
+        is_rooted = map(op.not_, map(op.methodcaller("motherList"), pcls))
+        rooted_ids = []
+        vertices = cl.defaultdict(list)
+        for children, parent, is_root in zip(
+            children_groups, parents, is_rooted
+        ):
+            if is_root:
+                rooted_ids.append(parent)
+            vertices[children].append(parent)
+        vertices[tuple(rooted_ids)].append(0)
+        incoming_dict = {}
+        outgoing_dict = {}
+        for vtx_id, (inc, out) in enumerate(vertices.items(), start=1):
+            for edge_id in inc:
+                incoming_dict[edge_id] = vtx_id
+            for edge_id in out:
+                outgoing_dict[edge_id] = vtx_id
+        edge_select = op.itemgetter(*parents)
+        coo_zip = zip(edge_select(incoming_dict), edge_select(outgoing_dict))
+        coo_edges = -np.fromiter(
+            coo_zip, dtype=np.dtype(("<i4", 2)), count=len(parents)
         )
-        edge_df = edge_df.set_index("index")
-        vertex_df = _vertex_df(edge_df)  # type: ignore
-        edge_df = _add_edge_cols(edge_df, vertex_df)  # type: ignore
-        edge_df = edge_df.drop(columns=["parents", "final"])
-        edge_df["out"] *= -1  # type: ignore
-        edge_df["in"] *= -1  # type: ignore
-        return rfn.unstructured_to_structured(
-            edge_df[["in", "out"]].values,  # type: ignore
-            dtype=np.dtype([("in", "<i4"), ("out", "<i4")]),
-        )
+        coo_edges[self.final, 1] *= -1
+        out = coo_edges.view(np.dtype([("in", "<i4"), ("out", "<i4")]))
+        return out.reshape(-1)
 
     @property
     def pmu(self) -> base.AnyVector:
@@ -199,19 +168,21 @@ class PythiaEvent(base.EventAdapter):
 
     @property
     def pdg(self) -> base.IntVector:
-        return np.fromiter(self._prop_map("id"), np.int32)
+        return np.fromiter(self._prop_map("id"), np.int32, count=len(self))
 
-    @property
+    @cached_property
     def final(self) -> base.BoolVector:
-        return np.fromiter(self._prop_map("isFinal"), np.bool_)
+        return np.fromiter(
+            self._prop_map("isFinal"), np.bool_, count=len(self)
+        )
 
     @property
     def helicity(self) -> base.HalfIntVector:
-        return np.fromiter(self._prop_map("pol"), np.int16)
+        return np.fromiter(self._prop_map("pol"), np.int16, count=len(self))
 
     @property
     def status(self) -> base.HalfIntVector:
-        return np.fromiter(self._prop_map("status"), np.int16)
+        return np.fromiter(self._prop_map("status"), np.int16, count=len(self))
 
     def copy(self) -> "PythiaEvent":
         """Returns a copy of the event."""
@@ -319,6 +290,8 @@ class PythiaGenerator(base.GeneratorAdapter):
     def __next__(self) -> PythiaEvent:
         if self._pythia is None:
             raise RuntimeError("Pythia generator not initialised.")
+        if hasattr(self._event, "final"):
+            del self._event.final
         if hasattr(self._event, "_pcls"):
             del self._event._pcls
         is_next = self._pythia.next()
