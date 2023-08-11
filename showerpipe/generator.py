@@ -112,13 +112,11 @@ class PythiaEvent(base.EventAdapter):
             lambda i, x: tuple(x) if x else (-i,),
             enumerate(map(op.methodcaller("daughterList"), pcls), start=1),
         )
-        is_rooted = map(op.not_, map(op.methodcaller("motherList"), pcls))
+        rooted = map(op.not_, map(op.methodcaller("motherList"), pcls))
         rooted_ids = []
         vertices = cl.defaultdict(list)
-        for children, parent, is_root in zip(
-            children_groups, parents, is_rooted
-        ):
-            if is_root:
+        for children, parent, root in zip(children_groups, parents, rooted):
+            if root:
                 rooted_ids.append(parent)
             vertices[children].append(parent)
         vertices[tuple(rooted_ids)].append(0)
