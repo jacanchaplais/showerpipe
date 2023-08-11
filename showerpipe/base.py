@@ -5,8 +5,8 @@
 Provides types and abstract base classes to define the showerpipe API.
 """
 from abc import ABC, abstractmethod
-from typing import TypeVar, Generic, Iterable, Any
-from collections.abc import Sized, Iterator
+from typing import TypeVar, Generic, Iterable, Any, Iterator
+from collections.abc import Sized
 
 import numpy.typing as npt
 import numpy as np
