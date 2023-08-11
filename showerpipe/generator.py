@@ -124,10 +124,10 @@ class PythiaEvent(base.EventAdapter):
         vertices[tuple(rooted_ids)].append(0)
         incoming_dict = {}
         outgoing_dict = {}
-        for vtx_id, (inc, out) in enumerate(vertices.items(), start=1):
+        for vtx_id, (inc, outg) in enumerate(vertices.items(), start=1):
             for edge_id in inc:
                 incoming_dict[edge_id] = vtx_id
-            for edge_id in out:
+            for edge_id in outg:
                 outgoing_dict[edge_id] = vtx_id
         edge_select = op.itemgetter(*parents)
         coo_zip = zip(edge_select(incoming_dict), edge_select(outgoing_dict))
