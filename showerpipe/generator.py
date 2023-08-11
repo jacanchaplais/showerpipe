@@ -40,34 +40,6 @@ class PythiaEvent(base.EventAdapter):
     data via NumPy arrays.
 
     :group: Pythia
-
-    Attributes
-    ----------
-    pdg : ndarray[int32]
-        Particle Data Group identification codes for the particle set.
-    pmu : structured ndarray[float64] with "x", "y", "z", "e" fields
-        Four-momenta of the particle set.
-    color : structured ndarray[int32] with "color", "anticolor" fields
-        Colour codes assigned to each generated particle.
-    helicity : ndarray[int16]
-        Helicity eigenvalues for the particle set. Pythia uses a value
-        of 9 as a sentinel to identify no eigenvalue.
-    status : ndarray[int16]
-        Status codes annotating each particle with a description of
-        its method of creation and purpose.
-        See https://pythia.org/latest-manual/ParticleProperties.html.
-    final : ndarray[bool_]
-        Boolean mask over the particle set, identifying final resulting
-        particles at the end of the simulation. The leaves of the DAG
-        representation.
-    edges : structured ndarray[int32] with "in", "out" fields
-        Describes the heritage of the generate particle set with a DAG,
-        formatted as a COO adjacency list.
-
-    Methods
-    -------
-    copy()
-        Produces a new event with identical particle records.
     """
 
     _event: _pythia8.Event
@@ -138,6 +110,7 @@ class PythiaEvent(base.EventAdapter):
 
     @property
     def pmu(self) -> base.AnyVector:
+        """Four-momenta of the particle set."""
         return self._extract_struc(
             cl.OrderedDict(
                 {
@@ -151,6 +124,7 @@ class PythiaEvent(base.EventAdapter):
 
     @property
     def color(self) -> base.AnyVector:
+        """Colour codes assigned to each generated particle."""
         return self._extract_struc(
             cl.OrderedDict(
                 {
@@ -162,20 +136,35 @@ class PythiaEvent(base.EventAdapter):
 
     @property
     def pdg(self) -> base.IntVector:
+        """Particle Data Group id codes for the particle set."""
         return np.fromiter(self._prop_map("id"), np.int32, count=len(self))
 
     @cached_property
     def final(self) -> base.BoolVector:
+        """Boolean mask over the particle set, identifying final
+        resulting particles at the end of the simulation. The leaves of
+        the DAG representation.
+        """
         return np.fromiter(
             self._prop_map("isFinal"), np.bool_, count=len(self)
         )
 
     @property
     def helicity(self) -> base.HalfIntVector:
+        """Helicity eigenvalues for the particle set.
+
+        Notes
+        -----
+        Pythia uses the value 9 as a sentinel to identify no eigenvalue.
+        """
         return np.fromiter(self._prop_map("pol"), np.int16, count=len(self))
 
     @property
     def status(self) -> base.HalfIntVector:
+        """Status codes annotating each particle with a description of
+        its method of creation and purpose.
+        See https://pythia.org/latest-manual/ParticleProperties.html.
+        """
         return np.fromiter(self._prop_map("status"), np.int16, count=len(self))
 
     def copy(self) -> "PythiaEvent":
@@ -209,11 +198,6 @@ class PythiaGenerator(base.GeneratorAdapter):
         Settings flags passed to Pythia, formatted as a dict of dicts.
     xml_dir : pathlib.Path
         Path of the Pythia XML data directory.
-
-    Methods
-    -------
-    overwrite_event(new_event)
-        Overwrites the current event with ``new_event``.
 
     Raises
     ------
