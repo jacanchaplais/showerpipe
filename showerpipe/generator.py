@@ -77,6 +77,13 @@ class PythiaEvent(base.EventAdapter):
     def edges(self) -> base.AnyVector:
         """Describes the heritage of the particle set as a DAG,
         formatted as a COO adjacency list.
+
+        Notes
+        -----
+        The edges' source and destination nodes obey the following
+        labeling convention: the root node has an ID of 0, the leaf
+        nodes have positive IDs, and all other nodes have negative IDs.
+        All absolute numerical values of non-root nodes are arbitrary.
         """
         pcls = self._pcls
         parents = tuple(map(op.methodcaller("index"), pcls))
