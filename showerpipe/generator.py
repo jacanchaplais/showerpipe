@@ -81,7 +81,7 @@ class PythiaEvent(base.EventAdapter):
         pcls = self._pcls
         parents = tuple(map(op.methodcaller("index"), pcls))
         children_groups = it.starmap(
-            lambda i, x: tuple(x) if x else (-i,),
+            lambda i, x: tuple(sorted(x)) if x else (-i,),
             enumerate(map(op.methodcaller("daughterList"), pcls), start=1),
         )
         rooted = map(op.not_, map(op.methodcaller("motherList"), pcls))
