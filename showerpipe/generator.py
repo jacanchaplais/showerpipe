@@ -11,6 +11,7 @@ arrays.
 """
 import collections as cl
 import itertools as it
+import math
 import operator as op
 import os
 import random
@@ -103,6 +104,7 @@ class PythiaEvent(base.EventAdapter):
         outgoing_dict = {}
         # to the children, the current vertex is src, to parents it's dst
         for vtx_id, (inc, outg) in enumerate(vertices.items(), start=1):
+            vtx_id = math.copysign(vtx_id, inc[0])
             for edge_id in inc:
                 incoming_dict[edge_id] = 0 if edge_id in rooted_ids else vtx_id
             for edge_id in outg:
@@ -112,7 +114,6 @@ class PythiaEvent(base.EventAdapter):
         coo_edges = -np.fromiter(
             coo_zip, dtype=np.dtype(("<i4", 2)), count=len(parents)
         )
-        coo_edges[self.final, 1] *= -1
         out = coo_edges.view(np.dtype([("in", "<i4"), ("out", "<i4")]))
         return out.reshape(-1)
 
@@ -147,7 +148,7 @@ class PythiaEvent(base.EventAdapter):
         """Particle Data Group id codes for the particle set."""
         return np.fromiter(self._prop_map("id"), np.int32, count=len(self))
 
-    @cached_property
+    @property
     def final(self) -> base.BoolVector:
         """Boolean mask over the particle set, identifying final
         resulting particles at the end of the simulation. The leaves of
@@ -280,8 +281,6 @@ class PythiaGenerator(base.GeneratorAdapter):
     def __next__(self) -> PythiaEvent:
         if self._pythia is None:
             raise RuntimeError("Pythia generator not initialised.")
-        if hasattr(self._event, "final"):
-            del self._event.final
         if hasattr(self._event, "_pcls"):
             del self._event._pcls
         is_next = self._pythia.next()
