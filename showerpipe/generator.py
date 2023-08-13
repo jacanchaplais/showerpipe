@@ -104,11 +104,10 @@ class PythiaEvent(base.EventAdapter):
         outgoing_dict = {}
         # to the children, the current vertex is src, to parents it's dst
         for vtx_id, (inc, outg) in enumerate(vertices.items(), start=1):
-            first_inc = inc[0]
-            if first_inc in rooted_ids:
+            if outg[0] == 0:
                 vtx_id = 0
             else:
-                vtx_id = math.copysign(vtx_id, first_inc)
+                vtx_id = math.copysign(vtx_id, inc[0])
             for edge_id in inc:
                 incoming_dict[edge_id] = vtx_id
             for edge_id in outg:
