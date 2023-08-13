@@ -94,9 +94,10 @@ class PythiaEvent(base.EventAdapter):
         vertices[tuple(rooted_ids)].append(0)
         incoming_dict = {}
         outgoing_dict = {}
+        # to the children, the current vertex is src, to parents it's dst
         for vtx_id, (inc, outg) in enumerate(vertices.items(), start=1):
             for edge_id in inc:
-                incoming_dict[edge_id] = vtx_id
+                incoming_dict[edge_id] = 0 if edge_id in rooted_ids else vtx_id
             for edge_id in outg:
                 outgoing_dict[edge_id] = vtx_id
         edge_select = op.itemgetter(*parents)
