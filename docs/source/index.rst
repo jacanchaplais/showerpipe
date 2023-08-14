@@ -6,7 +6,7 @@
 Welcome to showerpipe's documentation!
 ====================================
 
-.. mdinclude:: ../../README.md
+.. include:: ../../README.rst
 
 .. toctree::
    :caption: API Reference

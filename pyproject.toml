@@ -5,6 +5,43 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools_scm]
 write_to = "showerpipe/_version.py"
 
+[project]
+name = "showerpipe"
+dynamic = ["version"]
+authors = [{name = "Jacan Chaplais"}]
+maintainers = [{name = "Jacan Chaplais"}]
+description = "Data pipeline tools for particle shower and hadronisation."
+readme = {file = "README.rst", content-type = "text/x-rst"}
+requires-python = ">=3.8"
+license = {file = "LICENSE.txt"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent"
+]
+dependencies = [
+    "requests",
+    "lxml",
+    "numpy",
+    "pandas",
+    "rich",
+]
+
+[project.urls]
+repository = "https://github.com/jacanchaplais/showerpipe"
+documentation = "https://showerpipe.readthedocs.io"
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit ==2.19.0",
+    "flake8 ==3.9.2",
+    "tox ==3.24.3",
+    "pytest ==6.2.5",
+    "pytest-cov ==2.12.1",
+    "hypothesis ==6.62.0",
+    "mypy ==0.910",
+]
+
 [tool.black]
 line-length = 79
 
@@ -21,3 +58,12 @@ warn_return_any = true
 warn_unreachable = true
 warn_unused_configs = true
 no_implicit_reexport = true
+
+[tool.pyright]
+include = ["showerpipe"]
+exclude = ["**/node_modules", "**/__pycache__"]
+defineConstant = { DEBUG = true }
+reportMissingImports = true
+reportMissingTypeStubs = false
+pythonVersion = "3.8"
+pythonPlatform = "Linux"

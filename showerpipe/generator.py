@@ -9,81 +9,30 @@ is supported.
 Data is generated using Python iterator objects, and provided in NumPy
 arrays.
 """
-import os
-import tempfile as tf
-import shutil
-from pathlib import Path
-import typing as ty
-from collections import OrderedDict
-from dataclasses import dataclass
+import collections as cl
+import itertools as it
+import math
 import operator as op
+import os
 import random
-from functools import cached_property
-from copy import deepcopy
+import shutil
+import tempfile as tf
+import typing as ty
 import warnings
+from copy import deepcopy
+from dataclasses import dataclass
+from functools import cached_property
+from pathlib import Path
 
 import numpy as np
-import numpy.lib.recfunctions as rfn
 import numpy.typing as npt
-import pandas as pd
 import pythia8 as _pythia8
-from rich.tree import Tree
 from rich.console import Console
+from rich.tree import Tree
 
 from showerpipe import base, lhe
 
-
 __all__ = ["PythiaEvent", "PythiaGenerator", "repeat_hadronize"]
-
-
-def _vertex_df(event_df: pd.DataFrame) -> pd.DataFrame:
-    vertex_df = event_df.reset_index()
-    vertex_df = vertex_df.pivot_table(
-        index="parents",
-        values=["index"],
-        aggfunc=lambda x: tuple(x.to_list()),  # type: ignore
-    )
-    vertex_df = vertex_df.reset_index()
-    vertex_df = vertex_df.rename(columns={"parents": "in", "index": "out"})
-    vertex_df.index.name = "id"
-    return vertex_df
-
-
-def _unpack(vtx_df: pd.DataFrame, direction: str) -> pd.DataFrame:
-    vtx_col: pd.DataFrame = vtx_df[direction].reset_index()  # type: ignore
-    vtx_col = vtx_col.explode(direction)
-    vtx_col = vtx_col.set_index(direction)  # type: ignore
-    vertex_to_edge = {"in": "out", "out": "in"}
-    vtx_col.index.name = "index"
-    vtx_col = vtx_col.rename(columns={"id": vertex_to_edge[direction]})
-    return vtx_col
-
-
-def _add_edge_cols(
-    event_df: pd.DataFrame, vertex_df: pd.DataFrame
-) -> pd.DataFrame:
-    edge_out = _unpack(vertex_df, "out")
-    edge_in = _unpack(vertex_df, "in")
-    shower_df = event_df.join(edge_out)
-    shower_df = shower_df.join(edge_in)
-    edge_df = shower_df[["in", "out"]]
-    if edge_df is None:
-        raise ValueError
-    if shower_df is None:
-        raise ValueError
-    max_id = edge_df.stack().max()
-    isna: pd.Series = shower_df["out"].isna()  # type: ignore
-    final: pd.Series = shower_df["final"]  # type: ignore
-    num_final = np.sum(final)
-    final_ids = -1 * np.arange(max_id + 1, max_id + num_final + 1)
-    if not shower_df[isna]["final"].all():  # type: ignore
-        raise RuntimeError(
-            "Failed to add edges! Some outgoing vertices are not defined. "
-            "Please report this to maintainers."
-        )
-    shower_df.loc[(final, "out")] = final_ids
-    shower_df["out"] = shower_df["out"].astype("<i4")  # type: ignore
-    return shower_df
 
 
 @dataclass
@@ -92,34 +41,6 @@ class PythiaEvent(base.EventAdapter):
     data via NumPy arrays.
 
     :group: Pythia
-
-    Attributes
-    ----------
-    pdg : ndarray[int32]
-        Particle Data Group identification codes for the particle set.
-    pmu : structured ndarray[float64] with "x", "y", "z", "e" fields
-        Four-momenta of the particle set.
-    color : structured ndarray[int32] with "color", "anticolor" fields
-        Colour codes assigned to each generated particle.
-    helicity : ndarray[int16]
-        Helicity eigenvalues for the particle set. Pythia uses a value
-        of 9 as a sentinel to identify no eigenvalue.
-    status : ndarray[int16]
-        Status codes annotating each particle with a description of
-        its method of creation and purpose.
-        See https://pythia.org/latest-manual/ParticleProperties.html.
-    final : ndarray[bool_]
-        Boolean mask over the particle set, identifying final resulting
-        particles at the end of the simulation. The leaves of the DAG
-        representation.
-    edges : structured ndarray[int32] with "in", "out" fields
-        Describes the heritage of the generate particle set with a DAG,
-        formatted as a COO adjacency list.
-
-    Methods
-    -------
-    copy()
-        Produces a new event with identical particle records.
     """
 
     _event: _pythia8.Event
@@ -149,35 +70,112 @@ class PythiaEvent(base.EventAdapter):
         self, schema: ty.OrderedDict[str, ty.Tuple[str, npt.DTypeLike]]
     ) -> base.AnyVector:
         dtype = np.dtype(list(schema.values()))
-        return np.fromiter(zip(*map(self._prop_map, schema.keys())), dtype)
+        return np.fromiter(
+            zip(*map(self._prop_map, schema.keys())), dtype, count=len(self)
+        )
 
     @property
     def edges(self) -> base.AnyVector:
-        edge_df = pd.DataFrame(
-            self._extract_struc(
-                OrderedDict(
-                    {"index": ("index", "<i4"), "isFinal": ("final", "<?")}
-                )
-            )
+        """Describes the heritage of the particle set as a DAG,
+        formatted as a COO adjacency list.
+
+        Notes
+        -----
+        The edges' source and destination nodes obey the following
+        labeling convention: the root node has an ID of 0, the leaf
+        nodes have positive IDs, and all other nodes have negative IDs.
+        All absolute numerical values of non-root nodes are arbitrary.
+        """
+        # Developer notes
+        # ===============
+        # The following routine is rather complex, and it may not be clear what
+        # it does, or how. A semi-comprehensive explanation is provided below.
+        #
+        # Motivation
+        # ----------
+        # Pythia does not provide the topological structure of the generation
+        # directed acyclic graph in a standardised format. Instead, they
+        # provide each particle with an id code, and have methods for accessing
+        # the direct ancestors and descendants of a given particle. The
+        # algorithm below converts this representation into COO notation.
+        #
+        # Implementation
+        # --------------
+        # The algorithm must construct vertices in which particles (edges)
+        # enter, interact, and produce new particles which leave. The COO
+        # representation can be formed from the src and dst pairs of the vertex
+        # ids. Two observations from physics simplify vertex construction:
+        #
+        # + no particle enters or exits more than a single vertex
+        # + all particles entering an interaction vertex will have the same
+        #   children in common (vice versa for outgoing particles and parents)
+        #
+        # We can define a vertex as a map between outgoing and incoming
+        # particles. This is constructed using a defaultdict, which
+        # instantiates an empty list if a new subscript is accessed. Each
+        # particle is then iterated, with children sorted and cast into a tuple
+        # to make hashable, and each time the same children are encountered,
+        # (as a subscript to the dictionary), the corresponding parent id is
+        # appended to a growing list of incoming particle ids for the vertex.
+        #
+        # If a particle has no children, it is a leaf of the DAG, and an
+        # arbitrary pseudo-particle id is added as the child, with a negative
+        # sign. The negative sign prevents overlap with the positive ids of the
+        # other particles. It also provides a way of propagating the opposite
+        # sign from the internal vertices to the leaf vertex ids.
+        #
+        # If a particle has no parents, it is the root of the DAG, and is
+        # labeled with an id of 0. This, too, can be propagated to the root
+        # vertex id, to identify it uniquely in the COO representation.
+        #
+        # These vertices are then numbered and iterated over. Mappings between
+        # the particle ids (accessed as the incoming and outgoing edge ids of
+        # the defaultdict vertex mapping) are constructed. One dictionary for
+        # particles incident on a given interaction vertex, and another for
+        # outgoing particles, is made. Finally, the original sequence of
+        # particle ids, as provided by Pythia, can then be passed as subscripts
+        # to the incoming and outgoing dictionaries, yielding pairs of src and
+        # dst vertex ids as the particle representation, which is formatted as
+        # a numpy array. This maintains the edges as having the same ordering
+        # of the particles. Additonally, as the pseudo-particles to terminate
+        # root and leaf edges have ids which are not present in the sequence
+        # of particle ids we use to subscript, those loose ends are discarded
+        # automatically.
+        pcls = self._pcls
+        parents = tuple(map(op.methodcaller("index"), pcls))
+        children_groups = it.starmap(
+            lambda i, x: tuple(sorted(x)) if x else (-i,),
+            enumerate(map(op.methodcaller("daughterList"), pcls), start=1),
         )
-        edge_df["parents"] = tuple(
-            map(lambda x: tuple(sorted(x)), self._prop_map("motherList"))
+        rooted = map(op.not_, map(op.methodcaller("motherList"), pcls))
+        rooted_ids = []
+        vertices = cl.defaultdict(list)
+        for children, parent, root in zip(children_groups, parents, rooted):
+            if root:
+                rooted_ids.append(parent)
+            vertices[children].append(parent)
+        vertices[tuple(rooted_ids)].append(0)
+        incoming_dict, outgoing_dict = {}, {}
+        # to the children, the current vertex is src, to parents it's dst
+        for vtx_id, (inc, outg) in enumerate(vertices.items(), start=1):
+            vtx_id = 0 if outg[0] == 0 else math.copysign(vtx_id, inc[0])
+            for edge_id in inc:
+                incoming_dict[edge_id] = vtx_id
+            for edge_id in outg:
+                outgoing_dict[edge_id] = vtx_id
+        edge_select = op.itemgetter(*parents)
+        coo_zip = zip(edge_select(incoming_dict), edge_select(outgoing_dict))
+        coo_edges = -np.fromiter(
+            coo_zip, dtype=np.dtype(("<i4", 2)), count=len(parents)
         )
-        edge_df = edge_df.set_index("index")
-        vertex_df = _vertex_df(edge_df)  # type: ignore
-        edge_df = _add_edge_cols(edge_df, vertex_df)  # type: ignore
-        edge_df = edge_df.drop(columns=["parents", "final"])
-        edge_df["out"] *= -1  # type: ignore
-        edge_df["in"] *= -1  # type: ignore
-        return rfn.unstructured_to_structured(
-            edge_df[["in", "out"]].values,  # type: ignore
-            dtype=np.dtype([("in", "<i4"), ("out", "<i4")]),
-        )
+        out = coo_edges.view(np.dtype([("src", "<i4"), ("dst", "<i4")]))
+        return out.reshape(-1)
 
     @property
     def pmu(self) -> base.AnyVector:
+        """Four-momenta of the particle set."""
         return self._extract_struc(
-            OrderedDict(
+            cl.OrderedDict(
                 {
                     "px": ("x", "<f8"),
                     "py": ("y", "<f8"),
@@ -189,8 +187,9 @@ class PythiaEvent(base.EventAdapter):
 
     @property
     def color(self) -> base.AnyVector:
+        """Colour codes assigned to each generated particle."""
         return self._extract_struc(
-            OrderedDict(
+            cl.OrderedDict(
                 {
                     "col": ("color", "<i4"),
                     "acol": ("anticolor", "<i4"),
@@ -200,19 +199,36 @@ class PythiaEvent(base.EventAdapter):
 
     @property
     def pdg(self) -> base.IntVector:
-        return np.fromiter(self._prop_map("id"), np.int32)
+        """Particle Data Group id codes for the particle set."""
+        return np.fromiter(self._prop_map("id"), np.int32, count=len(self))
 
     @property
     def final(self) -> base.BoolVector:
-        return np.fromiter(self._prop_map("isFinal"), np.bool_)
+        """Boolean mask over the particle set, identifying final
+        resulting particles at the end of the simulation. The leaves of
+        the DAG representation.
+        """
+        return np.fromiter(
+            self._prop_map("isFinal"), np.bool_, count=len(self)
+        )
 
     @property
     def helicity(self) -> base.HalfIntVector:
-        return np.fromiter(self._prop_map("pol"), np.int16)
+        """Helicity eigenvalues for the particle set.
+
+        Notes
+        -----
+        Pythia uses the value 9 as a sentinel to identify no eigenvalue.
+        """
+        return np.fromiter(self._prop_map("pol"), np.int16, count=len(self))
 
     @property
     def status(self) -> base.HalfIntVector:
-        return np.fromiter(self._prop_map("status"), np.int16)
+        """Status codes annotating each particle with a description of
+        its method of creation and purpose.
+        See https://pythia.org/latest-manual/ParticleProperties.html.
+        """
+        return np.fromiter(self._prop_map("status"), np.int16, count=len(self))
 
     def copy(self) -> "PythiaEvent":
         """Returns a copy of the event."""
@@ -245,11 +261,6 @@ class PythiaGenerator(base.GeneratorAdapter):
         Settings flags passed to Pythia, formatted as a dict of dicts.
     xml_dir : pathlib.Path
         Path of the Pythia XML data directory.
-
-    Methods
-    -------
-    overwrite_event(new_event)
-        Overwrites the current event with ``new_event``.
 
     Raises
     ------
