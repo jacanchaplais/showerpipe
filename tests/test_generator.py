@@ -1,18 +1,18 @@
-import tempfile as tf
 import contextlib as ctx
-from pathlib import Path
-import operator as op
 import itertools as it
-import typing as ty
+import operator as op
 import shutil
+import tempfile as tf
+import typing as ty
+from pathlib import Path
 
-import pytest
-from hypothesis import given, settings, strategies as st
 import numpy as np
 import numpy.lib.recfunctions as rfn
+import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 import showerpipe as shp
-
 
 TEST_DIR = Path(__file__).parent.resolve()
 DATA_PATH = TEST_DIR / "tt_bb_100.lhe.gz"
@@ -98,6 +98,14 @@ def test_event_len(gen: shp.generator.PythiaGenerator) -> None:
     props = (prop(event) for prop in map(op.attrgetter, prop_names))
     lens = tuple(map(len, props))
     assert event_len != 0 and all_equal(lens) and lens[0] == event_len
+
+
+@given(generators())
+@settings(max_examples=5, deadline=None)
+def test_leaves_consistent_final(gen: shp.generator.PythiaGenerator) -> None:
+    """Tests that the DAG leaves are consistent with the final mask."""
+    event = next(gen)
+    assert np.all(event.final == (event.edges["dst"] > 0))
 
 
 @st.composite
