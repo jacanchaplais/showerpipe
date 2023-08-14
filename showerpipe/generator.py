@@ -86,6 +86,61 @@ class PythiaEvent(base.EventAdapter):
         nodes have positive IDs, and all other nodes have negative IDs.
         All absolute numerical values of non-root nodes are arbitrary.
         """
+        # Developer notes
+        # ===============
+        # The following routine is rather complex, and it may not be clear what
+        # it does, or how. A semi-comprehensive explanation is provided below.
+        #
+        # Motivation
+        # ----------
+        # Pythia does not provide the topological structure of the generation
+        # directed acyclic graph in a standardised format. Instead, they
+        # provide each particle with an id code, and have methods for accessing
+        # the direct ancestors and descendants of a given particle. The
+        # algorithm below converts this representation into COO notation.
+        #
+        # Implementation
+        # --------------
+        # The algorithm must construct vertices in which particles (edges)
+        # enter, interact, and produce new particles which leave. The COO
+        # representation can be formed from the src and dst pairs of the vertex
+        # ids. Two observations from physics simplify vertex construction:
+        #
+        # + no particle enters or exits more than a single vertex
+        # + all particles entering an interaction vertex will have the same
+        #   children in common (vice versa for outgoing particles and parents)
+        #
+        # We can define a vertex as a map between outgoing and incoming
+        # particles. This is constructed using a defaultdict, which
+        # instantiates an empty list if a new subscript is accessed. Each
+        # particle is then iterated, with children sorted and cast into a tuple
+        # to make hashable, and each time the same children are encountered,
+        # (as a subscript to the dictionary), the corresponding parent id is
+        # appended to a growing list of incoming particle ids for the vertex.
+        #
+        # If a particle has no children, it is a leaf of the DAG, and an
+        # arbitrary pseudo-particle id is added as the child, with a negative
+        # sign. The negative sign prevents overlap with the positive ids of the
+        # other particles. It also provides a way of implementing the
+        # convention that leaf particles have opposite signs to all others.
+        #
+        # If a particle has no parents, it is the root of the DAG, and is
+        # labeled with an id of 0. This, too, can be propagated to identify the
+        # root node in the DAG in the final result.
+        #
+        # These vertices are then numbered and iterated over. Mappings between
+        # the particle ids (accessed as the incoming and outgoing edge ids of
+        # the defaultdict vertex mapping) are constructed. One dictionary for
+        # particles incident on a given interaction vertex, and another for
+        # outgoing particles, is made. Finally, the original sequence of
+        # particle ids, as provided by Pythia, can then be passed as subscripts
+        # to the incoming and outgoing dictionaries, yielding pairs of src and
+        # dst vertex ids as the particle representation, which is formatted as
+        # a numpy array. This maintains the edges as having the same ordering
+        # of the particles. Additonally, as the pseudo-particles to terminate
+        # root and leaf edges have ids which are not present in the sequence
+        # of particle ids we use to subscript, those loose ends are discarded
+        # automatically.
         pcls = self._pcls
         parents = tuple(map(op.methodcaller("index"), pcls))
         children_groups = it.starmap(
@@ -100,8 +155,7 @@ class PythiaEvent(base.EventAdapter):
                 rooted_ids.append(parent)
             vertices[children].append(parent)
         vertices[tuple(rooted_ids)].append(0)
-        incoming_dict = {}
-        outgoing_dict = {}
+        incoming_dict, outgoing_dict = {}, {}
         # to the children, the current vertex is src, to parents it's dst
         for vtx_id, (inc, outg) in enumerate(vertices.items(), start=1):
             vtx_id = 0 if outg[0] == 0 else math.copysign(vtx_id, inc[0])
