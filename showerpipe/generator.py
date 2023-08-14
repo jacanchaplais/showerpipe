@@ -168,7 +168,7 @@ class PythiaEvent(base.EventAdapter):
         coo_edges = -np.fromiter(
             coo_zip, dtype=np.dtype(("<i4", 2)), count=len(parents)
         )
-        out = coo_edges.view(np.dtype([("in", "<i4"), ("out", "<i4")]))
+        out = coo_edges.view(np.dtype([("src", "<i4"), ("dst", "<i4")]))
         return out.reshape(-1)
 
     @property
