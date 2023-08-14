@@ -121,12 +121,12 @@ class PythiaEvent(base.EventAdapter):
         # If a particle has no children, it is a leaf of the DAG, and an
         # arbitrary pseudo-particle id is added as the child, with a negative
         # sign. The negative sign prevents overlap with the positive ids of the
-        # other particles. It also provides a way of implementing the
-        # convention that leaf particles have opposite signs to all others.
+        # other particles. It also provides a way of propagating the opposite
+        # sign from the internal vertices to the leaf vertex ids.
         #
         # If a particle has no parents, it is the root of the DAG, and is
-        # labeled with an id of 0. This, too, can be propagated to identify the
-        # root node in the DAG in the final result.
+        # labeled with an id of 0. This, too, can be propagated to the root
+        # vertex id, to identify it uniquely in the COO representation.
         #
         # These vertices are then numbered and iterated over. Mappings between
         # the particle ids (accessed as the incoming and outgoing edge ids of
