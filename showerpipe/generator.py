@@ -10,6 +10,8 @@ Data is generated using Python iterator objects, and provided in NumPy
 arrays.
 """
 import collections as cl
+import contextlib as ctx
+import io
 import itertools as it
 import math
 import operator as op
@@ -244,11 +246,14 @@ class PythiaGenerator(base.GeneratorAdapter):
 
     Parameters
     ----------
-    config_file : pathlib.Path | str
-        Path to Pythia cmnd configuration file.
-    lhe_file : pathlib.Path | str | bytes, optional
+    config_file : Path | str | file_like
+        Pythia cmnd configuration file. If path or string, it is assumed
+        that the input refers to the location of a file on disk. If file
+        object, it must be in a readable mode.
+    lhe_file : Path | str | bytes, optional
         The variable or filepath containing the LHE data. May be a path,
-        string, or bytes object. If file, may be compressed with gzip.
+        string, or bytes object. If path to file, may be compressed with
+        gzip.
     rng_seed : int
         Seed passed to the random number generator used by Pythia.
     quiet : bool
@@ -275,7 +280,7 @@ class PythiaGenerator(base.GeneratorAdapter):
 
     def __init__(
         self,
-        config_file: ty.Union[str, Path],
+        config_file: ty.Union[str, Path, ty.TextIO],
         lhe_file: ty.Optional[lhe._LHE_STORAGE] = None,
         rng_seed: ty.Optional[int] = -1,
         quiet: bool = True,
@@ -289,17 +294,32 @@ class PythiaGenerator(base.GeneratorAdapter):
         config: ty.Dict[str, ty.Dict[str, str]] = {
             "Print": {"quiet": "on" if quiet else "off"},
             "Random": {"setSeed": "on", "seed": str(rng_seed)},
-            "Beams": {"frameType": "4"},
         }
-        with open(config_file) as f:
-            for line in f:
+        with ctx.ExitStack() as stack:
+            if not isinstance(config_file, io.TextIOBase):
+                config_file = stack.enter_context(
+                    open(config_file, encoding="utf-8")
+                )
+            for line in config_file:
                 key, val = line.partition("=")[::2]
                 sup_key, sub_key = map(lambda s: s.strip(), key.split(":"))
                 if sup_key.startswith("#"):
                     continue
-                config.setdefault(sup_key, dict())
+                config.setdefault(sup_key, {})
                 config[sup_key][sub_key] = val.strip()
         if lhe_file is not None:
+            frame_type = config.get("Beams", {}).get("frameType", None)
+            if frame_type is None:
+                warnings.warn(
+                    "Beams:frameType not set. Inserting default of 4 for LHE "
+                    "compatibility.",
+                    UserWarning,
+                )
+                frame_type = "4"
+                config.setdefault("Beams", {})
+                config["Beams"]["frameType"] = frame_type
+            if int(frame_type) != 4:
+                raise ValueError("Must set 'Beams:frameType = 4' for LHE data")
             self._num_events = lhe.count_events(lhe_file)
             with lhe.source_adapter(lhe_file) as f:
                 self.temp_lhe_file = tf.NamedTemporaryFile()

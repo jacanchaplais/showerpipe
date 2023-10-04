@@ -5,9 +5,8 @@ channels:
 
 dependencies:
   - pip
-  - python>=3.7
+  - python>=3.8
   - lxml
   - numpy
-  - pandas
   - pythia8
   - rich=12.6.0

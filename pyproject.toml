@@ -23,7 +23,6 @@ dependencies = [
     "requests",
     "lxml",
     "numpy",
-    "pandas",
     "rich",
 ]
 
