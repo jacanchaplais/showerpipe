@@ -289,9 +289,8 @@ class PythiaGenerator(base.GeneratorAdapter):
         config: ty.Dict[str, ty.Dict[str, str]] = {
             "Print": {"quiet": "on" if quiet else "off"},
             "Random": {"setSeed": "on", "seed": str(rng_seed)},
-            "Beams": {"frameType": "4"},
         }
-        with open(config_file) as f:
+        with open(config_file, encoding="utf-8") as f:
             for line in f:
                 key, val = line.partition("=")[::2]
                 sup_key, sub_key = map(lambda s: s.strip(), key.split(":"))
