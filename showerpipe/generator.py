@@ -299,6 +299,18 @@ class PythiaGenerator(base.GeneratorAdapter):
                 config.setdefault(sup_key, dict())
                 config[sup_key][sub_key] = val.strip()
         if lhe_file is not None:
+            frame_type = config.get("Beams", {}).get("frameType", None)
+            if frame_type is None:
+                warnings.warn(
+                    "Beams:frameType not set. Inserting default of 4 for LHE "
+                    "compatibility.",
+                    UserWarning,
+                )
+                frame_type = "4"
+                config.setdefault("Beams", {})
+                config["Beams"]["frameType"] = frame_type
+            if int(frame_type) != 4:
+                raise ValueError("Must set 'Beams:frameType = 4' for LHE data")
             self._num_events = lhe.count_events(lhe_file)
             with lhe.source_adapter(lhe_file) as f:
                 self.temp_lhe_file = tf.NamedTemporaryFile()
