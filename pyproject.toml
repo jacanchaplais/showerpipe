@@ -66,3 +66,6 @@ reportMissingImports = true
 reportMissingTypeStubs = false
 pythonVersion = "3.8"
 pythonPlatform = "Linux"
+
+[tool.pylint]
+extension-pkg-whitelist = "lxml"
