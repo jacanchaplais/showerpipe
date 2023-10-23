@@ -11,10 +11,9 @@ build:
   script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
 
 requirements:
-  build:
-    - git
   host:
     - python{{ pyproject['project']['requires-python'] }}
+    - git
     {% for dep in pyproject['build-system']['requires'] %}
     - {{ dep.lower() }}
     {% endfor %}
