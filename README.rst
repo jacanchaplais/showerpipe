@@ -12,8 +12,23 @@ Ariadne in future releases.
 Installation
 ------------
 
-This package requires Pythia 8 to be installed on your system, and
-available in your ``PYTHONPATH``.
+Using conda (Recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The easiest solution is to just install via conda:
+
+.. code:: bash
+
+   conda install -c jacanchaplais showerpipe
+
+Pythia will be included as a dependency, and all relevant paths and
+environment variables will be properly set.
+
+Using existing Pythia installation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If Pythia 8 is already installed on your system, and available in your
+``PYTHONPATH``, you can just install this package via ``pip``.
 
 It also requires the ``PYTHIA8DATA`` environment variable to be set.
 This is the path to the ``xmldoc/`` directory under Pythia’s ``share``
@@ -23,31 +38,7 @@ directory. You can do something like this in your shell config:
 
    export PYTHIA8DATA=/home/$USER/pythia82xx/share/Pythia8/xmldoc
 
-Without an existing Pythia installation (using conda)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If this is not already the case, a very convenient solution is to
-install it via ``conda``. This is fast, and automatically sets the
-``PYTHIA8DATA`` environment variable when you activate the virtual
-environment. An environment file is provided in the root of this repo,
-which will install all requirements and then showerpipe, automatically.
-The virtual environment can be created using:
-
-.. code:: bash
-
-   conda env create -f environment.yml
-
-If you have an existing conda environment, you can update it by
-activating the environment and then using:
-
-.. code:: bash
-
-   conda env update -f environment.yml --prune
-
-With existing Pythia installation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Simply:
+With everything set up properly, simply run:
 
 .. code:: bash
 
