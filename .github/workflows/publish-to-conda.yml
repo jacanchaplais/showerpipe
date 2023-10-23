@@ -4,12 +4,13 @@ on:
   push
 
 jobs:
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v3
-    - name: publish-to-conda
-      uses: fcakyon/conda-publish-action@v1.3
-      with:
-        subdir: '.conda'
-        anacondatoken: ${{ secrets.ANACONDA_TOKEN }}
-        platforms: 'osx linux'
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: publish-to-conda
+        uses: fcakyon/conda-publish-action@v1.3
+        with:
+          subdir: '.conda'
+          anacondatoken: ${{ secrets.ANACONDA_TOKEN }}
+          platforms: 'osx linux'
