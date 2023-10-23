@@ -13,7 +13,6 @@ build:
 requirements:
   host:
     - python{{ pyproject['project']['requires-python'] }}
-    - git
     {% for dep in pyproject['build-system']['requires'] %}
     - {{ dep.lower() }}
     {% endfor %}
