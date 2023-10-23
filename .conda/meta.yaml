@@ -1,7 +1,7 @@
 {% set pyproject = load_file_data('../pyproject.toml', from_recipe_dir=True) %}
 package:
   name: "{{ pyproject.get('project', {}).get('name') }}"
-  version: "{{ GIT_DESCRIBE_TAG }}"
+  version: "{{ environ['GIT_DESCRIBE_TAG'] }}"
 
 source:
   path: ..
