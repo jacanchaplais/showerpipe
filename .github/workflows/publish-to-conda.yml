@@ -5,12 +5,11 @@ on:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: publish-to-conda
-        uses: fcakyon/conda-publish-action@v1.3
-        with:
-          subdir: '.conda'
-          anacondatoken: ${{ secrets.ANACONDA_TOKEN }}
-          platforms: 'osx linux'
+    - name: Build Conda Packages
+      shell: bash -l {0}
+      env:
+        ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
+      run: |
+        conda install conda-build anaconda-client conda-verify
+        conda config --set anaconda_upload yes
+        conda build --token "${ANACONDA_TOKEN}" .conda/
