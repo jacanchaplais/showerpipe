@@ -1,0 +1,43 @@
+{% set pyproject = load_file_data('../pyproject.toml', from_recipe_dir=True) %}
+package:
+  name: "{{ pyproject.get('project', {}).get('name') }}"
+  version: "{{ GIT_DESCRIBE_TAG }}"
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  host:
+    - python{{ pyproject['project']['requires-python'] }}
+    {% for dep in pyproject['build-system']['requires'] %}
+    - {{ dep.lower() }}
+    {% endfor %}
+
+  run:
+    - python{{ pyproject['project']['requires-python'] }}
+    - pythia8
+    {% for dep in pyproject['project']['dependencies'] %}
+    - {{ dep.lower() }}
+    {% endfor %}
+
+test:
+  imports:
+    - showerpipe
+  commands:
+    - pip check
+  requires:
+    - pip
+
+about:
+  home: {{ pyproject['project']['urls']['repository'] }}
+  summary: {{ pyproject['project']['description'] }}
+  license: BSD-3-Clause
+  license_file: LICENSE.txt
+
+extra:
+  recipe-maintainers:
+    - jacanchaplais

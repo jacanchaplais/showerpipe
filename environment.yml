@@ -1,0 +1,12 @@
+name: showerpipe
+
+channels:
+  - conda-forge
+
+dependencies:
+  - pip
+  - python>=3.8
+  - lxml
+  - numpy
+  - pythia8
+  - rich=12.6.0
