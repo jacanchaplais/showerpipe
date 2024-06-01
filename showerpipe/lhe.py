@@ -6,24 +6,28 @@ The ShowerPipe Les Houches functions utilise xml parsing techniques to
 redistribute and repeat hard events, outputting valid lhe files.
 """
 
-from typing import Union, Iterator, Optional, Callable
-import io
-import re
+import collections as cl
+import dataclasses as dc
 import gzip
+import io
+import itertools as it
+import operator as op
+import re
 import shutil
-from contextlib import contextmanager, ExitStack
 import tempfile
-from pathlib import Path
+from contextlib import ExitStack, contextmanager
 from copy import deepcopy
-from itertools import chain
 from functools import cached_property
-from xml.sax.saxutils import unescape
+from pathlib import Path
+from typing import Callable, Iterator, Optional, Union
 from urllib.parse import urlparse
 from urllib.request import urlopen
+from xml.sax.saxutils import unescape
 
+import numpy as np
+import numpy.typing as npt
 from lxml import etree  # type: ignore
 from lxml.etree import ElementBase
-
 
 __all__ = ["source_adapter", "load_lhe", "count_events", "split", "LheData"]
 
@@ -68,9 +72,9 @@ def source_adapter(source: _LHE_STORAGE) -> Iterator[io.BufferedIOBase]:
     if is_path:
         path = Path(source)  # type: ignore
         try:
-            with io.open(path, "r") as lhe_filecheck:
+            with open(path) as lhe_filecheck:
                 lhe_filecheck.read(1)
-            out_io = io.open(path, "rb")
+            out_io = open(path, "rb")
             yield out_io
         except UnicodeDecodeError:
             out_io = gzip.open(path, "rb")
@@ -122,7 +126,7 @@ def _get_mg_info(header_element: ElementBase) -> ElementBase:
 
 
 def _read_num_events(mg_info: ElementBase) -> int:
-    re_num = re.findall("\d+", mg_info.text)
+    re_num = re.findall(r"\d+", mg_info.text)
     num_events = int(re_num[0])
     return num_events
 
@@ -388,7 +392,7 @@ class LheData:
         dup_strat: Callable[[Iterator[ElementBase]], Iterator[ElementBase]],
     ) -> Optional[bytes]:
         tiled_lists = (self._event_iter for _ in range(repeats))
-        dup_events = chain.from_iterable(dup_strat(tiled_lists))
+        dup_events = it.chain.from_iterable(dup_strat(tiled_lists))
         dup_event_copies = map(deepcopy, dup_events)
         root = self._build_root(dup_event_copies)
         header = root[0]
@@ -403,3 +407,62 @@ class LheData:
             return None
         else:
             return _root_to_bytes(root)
+
+
+@dc.dataclass
+class LheEvent:
+    pdg: npt.NDArray[np.int32]
+    pmu: npt.NDArray[np.float64]
+    status: npt.NDArray[np.int32]
+    helicity: npt.NDArray[np.int32]
+    color: npt.NDArray[np.int32]
+
+
+def _event_text_parse(event_text: str) -> LheEvent:
+    schema = {
+        "pdg": 0,
+        "status": 1,
+        "color": 4,
+        "anticolor": 5,
+        "x": 6,
+        "y": 7,
+        "z": 8,
+        "e": 9,
+        "helicity": 12,
+    }
+    records = cl.defaultdict(list)
+    lines = event_text.strip().split("\n")[1:]
+    num_pcls = len(lines)
+    rows = (line.split() for line in lines)
+    for particle_row, (attr, idx) in it.product(rows, schema.items()):
+        records[attr].append(float(particle_row[idx]))
+    return LheEvent(
+        pdg=np.array(records.pop("pdg"), dtype=np.int32),
+        helicity=np.array(records.pop("helicity"), dtype=np.int16),
+        status=np.array(records.pop("status"), dtype=np.int32),
+        color=np.fromiter(
+            zip(records.pop("color"), records.pop("anticolor")),
+            dtype=(np.int32, 2),
+            count=num_pcls,
+        ),
+        pmu=np.fromiter(
+            zip(*op.itemgetter(*"xyze")(records)),
+            dtype=(np.float64, 4),
+            count=num_pcls,
+        ),
+    )
+
+
+def event_iter_text(source: _LHE_STORAGE) -> Iterator[str]:
+    """See https://arxiv.org/abs/hep-ph/0109068."""
+    with source_adapter(source) as xml_source:
+        event_parser = etree.iterparse(
+            source=xml_source, tag=("event",), **_parse_kwargs
+        )
+        for _, event in event_parser:
+            yield event.text.strip()
+
+
+def event_iter(source: _LHE_STORAGE) -> Iterator[LheEvent]:
+    """See https://arxiv.org/abs/hep-ph/0109068."""
+    yield from map(_event_text_parse, event_iter_text(source))
