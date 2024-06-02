@@ -6,12 +6,10 @@ The ShowerPipe Les Houches functions utilise xml parsing techniques to
 redistribute and repeat hard events, outputting valid lhe files.
 """
 
-import collections as cl
 import dataclasses as dc
 import gzip
 import io
 import itertools as it
-import operator as op
 import re
 import shutil
 import tempfile
@@ -420,36 +418,19 @@ class LheEvent:
 
 def _event_text_parse(event_text: str) -> LheEvent:
     schema = {
-        "pdg": 0,
-        "status": 1,
-        "color": 4,
-        "anticolor": 5,
-        "x": 6,
-        "y": 7,
-        "z": 8,
-        "e": 9,
-        "helicity": 12,
+        "pdg": {"idx": 0, "dtype": np.int32},
+        "status": {"idx": 1, "dtype": np.int16},
+        "color": {"idx": slice(4, 6), "dtype": np.int32},
+        "pmu": {"idx": slice(6, 10), "dtype": np.float64},
+        "helicity": {"idx": 12, "dtype": np.int16},
     }
-    records = cl.defaultdict(list)
     lines = event_text.strip().split("\n")[1:]
-    num_pcls = len(lines)
-    rows = (line.split() for line in lines)
-    for particle_row, (attr, idx) in it.product(rows, schema.items()):
-        records[attr].append(float(particle_row[idx]))
+    data = np.loadtxt(iter(lines), dtype=np.float64)
     return LheEvent(
-        pdg=np.array(records.pop("pdg"), dtype=np.int32),
-        helicity=np.array(records.pop("helicity"), dtype=np.int16),
-        status=np.array(records.pop("status"), dtype=np.int32),
-        color=np.fromiter(
-            zip(records.pop("color"), records.pop("anticolor")),
-            dtype=(np.int32, 2),
-            count=num_pcls,
-        ),
-        pmu=np.fromiter(
-            zip(*op.itemgetter(*"xyze")(records)),
-            dtype=(np.float64, 4),
-            count=num_pcls,
-        ),
+        **{
+            name: data[:, meta["idx"]].astype(meta["dtype"])
+            for name, meta in schema.items()
+        }
     )
 
 
