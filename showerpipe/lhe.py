@@ -27,7 +27,16 @@ import numpy.typing as npt
 from lxml import etree  # type: ignore
 from lxml.etree import ElementBase
 
-__all__ = ["source_adapter", "load_lhe", "count_events", "split", "LheData"]
+__all__ = [
+    "source_adapter",
+    "load_lhe",
+    "count_events",
+    "split",
+    "LheData",
+    "LheData",
+    "event_iter_text",
+    "event_iter",
+]
 
 _LHE_STORAGE = Union[Path, str, bytes]
 
@@ -409,10 +418,31 @@ class LheData:
 
 @dc.dataclass
 class LheEvent:
+    """Data structure holding Les Houches event data.
+
+    :group: LesHouches
+
+    .. versionadded:: 0.4.0
+
+    Attributes
+    ----------
+    pdg : ndarray[int32]
+        PDG / MCPID identification codes for particle species.
+    pmu : ndarray[float64]
+        Four-momenta of particles, in (px, py, pz, E) order.
+    status : ndarray[int16]
+        Codes referring to the role of particles in the event, **eg.**
+        beam particle, incoming, outgoing, **etc.**
+    helicity : ndarray[int16]
+        Spin polarity of the particles.
+    color : ndarray[int32]
+        Color / anti-color code pairs of the particles.
+    """
+
     pdg: npt.NDArray[np.int32]
     pmu: npt.NDArray[np.float64]
-    status: npt.NDArray[np.int32]
-    helicity: npt.NDArray[np.int32]
+    status: npt.NDArray[np.int16]
+    helicity: npt.NDArray[np.int16]
     color: npt.NDArray[np.int32]
 
 
@@ -435,7 +465,25 @@ def _event_text_parse(event_text: str) -> LheEvent:
 
 
 def event_iter_text(source: _LHE_STORAGE) -> Iterator[str]:
-    """See https://arxiv.org/abs/hep-ph/0109068."""
+    """Iterates over a LHE file, yielding the text contained within an
+    event block.
+    See https://arxiv.org/abs/hep-ph/0109068 for the data layout.
+
+    :group: LesHouches
+
+    .. versionadded:: 0.4.0
+
+    Parameters
+    ----------
+    source : Pathlike, string, or bytes
+        The variable or filepath containing the LHE data. May be a path,
+        url, string, or bytes object. Gzip compression is allowed.
+
+    Yields
+    ------
+    str
+        The text block contained in each successive event.
+    """
     with source_adapter(source) as xml_source:
         event_parser = etree.iterparse(
             source=xml_source, tag=("event",), **_parse_kwargs
@@ -445,5 +493,30 @@ def event_iter_text(source: _LHE_STORAGE) -> Iterator[str]:
 
 
 def event_iter(source: _LHE_STORAGE) -> Iterator[LheEvent]:
-    """See https://arxiv.org/abs/hep-ph/0109068."""
+    """Iterates over a LHE file, yielding ``LheEvent`` objects,
+    providing attribute access to numpy arrays, containing particle
+    data.
+
+    :group: LesHouches
+
+    .. versionadded:: 0.4.0
+
+    Parameters
+    ----------
+    source : Pathlike, string, or bytes
+        The variable or filepath containing the LHE data. May be a path,
+        url, string, or bytes object. Gzip compression is allowed.
+
+    Yields
+    ------
+    LheEvent
+        Numpy interface to the event data.
+
+    Notes
+    -----
+    This is a wrapper around ``event_iter_text()``, but provides only a
+    subset of the fields available as attributes. For more complete data
+    you may wish to use ``event_iter_text()`` and parse the strings
+    yourself.
+    """
     yield from map(_event_text_parse, event_iter_text(source))
