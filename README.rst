@@ -1,7 +1,7 @@
 showerpipe
 ==========
 
-|PyPI version| |Tests| |Documentation| |License| |Code style: black|
+|DOI| |PyPI version| |Tests| |Documentation| |License| |Code style: black|
 
 Provides a Pythonic data pipeline for showering and hadronisation
 programs in HEP.
@@ -44,6 +44,8 @@ With everything set up properly, simply run:
 
    pip install showerpipe
 
+.. |DOI| image:: https://zenodo.org/badge/439139648.svg
+  :target: https://doi.org/10.5281/zenodo.15753757
 .. |PyPI version| image:: https://img.shields.io/pypi/v/showerpipe.svg
    :target: https://pypi.org/project/showerpipe/
 .. |Tests| image:: https://github.com/jacanchaplais/showerpipe/actions/workflows/tests.yml/badge.svg
