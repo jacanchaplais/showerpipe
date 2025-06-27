@@ -17,7 +17,7 @@ jobs:
         uses: mamba-org/setup-micromamba@v2
         with:
           init-shell: bash
-          cache-environment: true
+          cache-environment: false
           generate-run-shell: false
           environment-file: environment.yml
           create-args: |
