@@ -16,8 +16,9 @@ jobs:
       - name: Install Conda environment from environment.yml
         uses: mamba-org/setup-micromamba@v2
         with:
-          # init-shell: bash
+          init-shell: bash
           cache-environment: false
+          post-cleanup: 'all'
           generate-run-shell: false
           environment-file: environment.yml
           create-args: |
@@ -26,11 +27,9 @@ jobs:
             hypothesis=6.62.0
 
       - name: Install showerpipe
-        # shell: bash -el {0}
-        shell: micromamba-shell {0}
+        shell: bash -el {0}
         run: pip install .
 
       - name: Run tests
-        # shell: bash -el {0}
-        shell: micromamba-shell {0}
+        shell: bash -el {0}
         run: pytest
