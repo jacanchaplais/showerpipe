@@ -25,9 +25,9 @@ jobs:
             hypothesis=6.62.0
 
       - name: Install showerpipe
-        shell: bash -l {0}
+        shell: bash -el {0}
         run: pip install .
 
       - name: Run tests
-        shell: bash -l {0}
+        shell: bash -el {0}
         run: pytest
