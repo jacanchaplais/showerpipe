@@ -18,6 +18,7 @@ jobs:
         with:
           init-shell: bash
           cache-environment: true
+          generate-run-shell: false
           environment-file: environment.yml
           create-args: |
             python=${{ matrix.pyver }}
